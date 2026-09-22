@@ -21,8 +21,8 @@ index.html              indice
 media/                  registrazioni leggere e poster (fallback da telefono)
 ```
 
-Questo repository contiene il sito pubblicato. I sorgenti della ricerca conversazionale
-(Vite + React + matter-js) stanno in un repository privato.
+Questo repository contiene il sito pubblicato, non i sorgenti. La ricerca conversazionale
+è il build di un progetto Vite + React + matter-js che teniamo separato.
 
 ## Crediti
 
