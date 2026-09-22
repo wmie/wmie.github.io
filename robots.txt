@@ -1,0 +1,5 @@
+User-agent: *
+Allow: /
+Disallow: /*/demo/
+
+Sitemap: https://wmie.github.io/sitemap.xml

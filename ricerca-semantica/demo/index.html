@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="it">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="robots" content="noindex">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Condizioni generali di vendita — Ombralarga</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Inter+Tight:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="./find.css" />
+  </head>
+  <body>
+    <!-- the fictional shop's legal page: a long, boring document nobody reads -->
+    <div class="viewport" id="viewport">
+      <header class="site">
+        <span class="site__brand">Ombralarga</span>
+        <nav class="site__nav">
+          <span>Ombrelloni</span><span>Pergole</span><span>Arredo</span><span>Su misura</span><span>Assistenza</span>
+          <span class="site__nav-on">Legale</span>
+        </nav>
+        <span class="site__cart">Carrello · 0</span>
+      </header>
+      <div class="doc">
+        <aside class="toc" id="toc"><p class="toc__title">In questa pagina</p></aside>
+        <main class="body" id="body"></main>
+      </div>
+    </div>
+
+    <!-- page scrollbar with a tick per connection, like a find bar -->
+    <div class="rail"><div class="rail__thumb" id="thumb"></div><div id="ticks"></div></div>
+
+    <!-- wmie Neural Find: the semantic find panel -->
+    <aside class="panel" id="panel">
+      <div class="panel__bar">
+        <span class="panel__mark">w</span>
+        <span class="panel__word">wmie</span>
+        <span class="panel__by">AI Search</span>
+        <span class="panel__icons"
+          ><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3.2" /><path d="M12 4.4v2M12 17.6v2M4.4 12h2M17.6 12h2M6.6 6.6l1.4 1.4M16 16l1.4 1.4M17.4 6.6L16 8M8 16l-1.4 1.4" /></svg>
+          <svg viewBox="0 0 24 24"><path d="M6.5 6.5l11 11M17.5 6.5l-11 11" /></svg>
+        </span>
+      </div>
+      <div class="panel__query">
+        <div class="field" id="field">
+          <span class="field__ph" id="ph">Chiedi a questa pagina…</span>
+          <span class="field__typed" id="typed"></span><span class="field__caret" id="caret"></span>
+        </div>
+        <button class="go" id="go"><svg viewBox="0 0 24 24"><path d="M7.5 16.5L16.5 7.5M9 7.5h7.5V15" /></svg></button>
+      </div>
+      <div class="panel__foot">
+        <span class="count" id="count">Nessuna connessione</span>
+        <span class="nav">
+          <button id="prev"><svg viewBox="0 0 24 24"><path d="M6 14l6-6 6 6" /></svg></button>
+          <button id="next"><svg viewBox="0 0 24 24"><path d="M6 10l6 6 6-6" /></svg></button>
+        </span>
+      </div>
+      <p class="panel__meta" id="meta"></p>
+      <p class="panel__legend" id="legend">
+        <i class="sw sw--key"></i>frase che risponde<i class="sw sw--ctx"></i>contesto<b id="ms"></b>
+      </p>
+    </aside>
+
+    <!-- the ⌘F keycaps, flashed once before the panel opens -->
+    <div class="keys" id="keys"><kbd>⌘</kbd><kbd>F</kbd></div>
+
+    <script type="module" src="./find.js"></script>
+  </body>
+</html>

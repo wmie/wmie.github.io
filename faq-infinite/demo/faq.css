@@ -1,0 +1,320 @@
+/* Design frame 1664x936 (the recorder's browser window). Every spec pixel is
+   calc(N * var(--u)), so the page keeps its proportions at any capture width. */
+:root {
+  --u: calc(100vw / 1664);
+
+  --bg: #0a0a0a;
+  --surface: #111111;
+  --text: #f5f5f5;
+  --muted: #a3a3a3;
+  --accent: #8b5cf6;
+  --accent-soft: #c4b5fd;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+
+  --row: calc(17 * var(--u));
+  /* One content column, so a push-in on the FAQ block fills a 16:9 frame exactly. */
+  --cw: calc(1140 * var(--u));
+  --pad: calc((100vw - var(--cw)) / 2);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+/* A very quiet violet wash behind the top of the page, wmie's one flourish. */
+body::before {
+  content: '';
+  position: fixed;
+  left: 50%;
+  top: calc(-340 * var(--u));
+  width: calc(1200 * var(--u));
+  height: calc(760 * var(--u));
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(139, 92, 246, 0.13), rgba(139, 92, 246, 0));
+  pointer-events: none;
+}
+
+/* ── top bar ───────────────────────────────────────────────────────────── */
+.topbar {
+  position: relative;
+  border-bottom: 1px solid var(--border);
+  background: rgba(10, 10, 10, 0.72);
+}
+.topbar__in {
+  display: flex;
+  align-items: center;
+  gap: calc(40 * var(--u));
+  height: calc(66 * var(--u));
+  padding: 0 var(--pad);
+}
+.logo {
+  font-family: 'Inter Tight', Inter, sans-serif;
+  font-weight: 650;
+  font-size: calc(19 * var(--u));
+  letter-spacing: calc(-0.4 * var(--u));
+  color: var(--text);
+  text-decoration: none;
+}
+.nav {
+  display: flex;
+  gap: calc(28 * var(--u));
+  font-size: calc(13.5 * var(--u));
+  color: var(--muted);
+}
+.cta {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  height: calc(34 * var(--u));
+  padding: 0 calc(16 * var(--u));
+  border-radius: calc(2 * var(--u));
+  background: var(--accent);
+  color: #fff;
+  font-size: calc(13.5 * var(--u));
+  font-weight: 500;
+  text-decoration: none;
+}
+
+/* ── the two columns ───────────────────────────────────────────────────── */
+.faq {
+  position: relative;
+  display: flex;
+  gap: calc(76 * var(--u));
+  padding: calc(54 * var(--u)) var(--pad) 0;
+}
+.faq__side { width: calc(300 * var(--u)); flex: none; }
+.faq__title {
+  margin: 0;
+  font-family: 'Inter Tight', Inter, sans-serif;
+  font-weight: 600;
+  font-size: calc(40 * var(--u));
+  line-height: 1.06;
+  letter-spacing: calc(-1.1 * var(--u));
+}
+.faq__sub {
+  margin: calc(20 * var(--u)) 0 0;
+  font-size: calc(15.5 * var(--u));
+  line-height: 1.62;
+  color: var(--muted);
+}
+.faq__label {
+  margin-bottom: calc(18 * var(--u));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: calc(11 * var(--u));
+  letter-spacing: calc(1.6 * var(--u));
+  color: var(--accent);
+}
+.logo__dot { color: var(--accent); }
+
+.faq__list { flex: 1; min-width: 0; }
+
+/* ── accordion rows ────────────────────────────────────────────────────── */
+.item { border-top: 1px solid var(--border); }
+.item:first-child { border-top: 0; }
+
+.item__head {
+  display: flex;
+  align-items: center;
+  gap: calc(20 * var(--u));
+  height: calc(66 * var(--u));
+  cursor: pointer;
+}
+.item__q {
+  flex: 1;
+  font-size: var(--row);
+  font-weight: 450;
+  letter-spacing: calc(-0.1 * var(--u));
+  color: var(--text);
+  transition: color 0.25s ease;
+}
+.item.is-dim .item__q { color: rgba(245, 245, 245, 0.62); }
+
+.chev {
+  width: calc(12 * var(--u));
+  height: calc(12 * var(--u));
+  flex: none;
+  stroke: rgba(163, 163, 163, 0.8);
+  stroke-width: 1.8;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  transition: transform 0.42s cubic-bezier(0.2, 0.9, 0.25, 1), stroke 0.3s ease;
+}
+.item.is-open .chev { transform: rotate(180deg); stroke: var(--accent-soft); }
+
+/* grid-template-rows 0fr -> 1fr: height animation without a hardcoded height */
+.item__body {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.46s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.item.is-open .item__body { grid-template-rows: 1fr; }
+.item__bodyin { overflow: hidden; }
+.item__a {
+  padding-bottom: calc(28 * var(--u));
+  padding-right: calc(40 * var(--u));
+  font-size: calc(15.5 * var(--u));
+  line-height: 1.68;
+  color: rgba(245, 245, 245, 0.66);
+  opacity: 0;
+  transform: translateY(calc(6 * var(--u)));
+  transition: opacity 0.34s ease 0.1s, transform 0.4s cubic-bezier(0.2, 0.9, 0.25, 1) 0.1s;
+}
+.item.is-open .item__a { opacity: 1; transform: none; }
+.item__a p { margin: 0 0 calc(12 * var(--u)); }
+.item__a p:last-child { margin-bottom: 0; }
+
+/* ── the ask row ───────────────────────────────────────────────────────── */
+.ask {
+  border-top: 1px solid var(--border);
+  padding-bottom: calc(22 * var(--u));
+}
+.ask__row {
+  display: flex;
+  align-items: center;
+  gap: calc(16 * var(--u));
+  height: calc(66 * var(--u));
+}
+.ask__field {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  font-size: var(--row);
+  font-weight: 450;
+  letter-spacing: calc(-0.1 * var(--u));
+}
+.ask__typed { white-space: pre; color: var(--text); }
+.ask__ph { color: rgba(163, 163, 163, 0.65); }
+.caret {
+  width: calc(1.5 * var(--u));
+  height: calc(20 * var(--u));
+  margin-left: calc(1 * var(--u));
+  background: var(--accent);
+  opacity: 0;
+}
+.ask.is-focus .caret { animation: blink 1.06s steps(1, end) infinite; }
+@keyframes blink { 0%, 50% { opacity: 1; } 50.01%, 100% { opacity: 0; } }
+
+.send {
+  width: calc(28 * var(--u));
+  height: calc(28 * var(--u));
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  transition: background 0.3s ease, transform 0.3s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.send svg { width: calc(12 * var(--u)); height: calc(12 * var(--u)); stroke: rgba(163, 163, 163, 0.9); stroke-width: 1.9; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.ask.is-ready .send { background: var(--accent); }
+.ask.is-ready .send svg { stroke: #fff; }
+.ask.is-busy .send { background: rgba(255, 255, 255, 0.1); }
+.ask.is-busy .send svg { display: none; }
+.ask.is-busy .send::after {
+  content: '';
+  width: calc(8 * var(--u));
+  height: calc(8 * var(--u));
+  border-radius: calc(1.5 * var(--u));
+  background: var(--accent-soft);
+}
+
+/* ── the answer ────────────────────────────────────────────────────────── */
+.answer { padding-right: calc(40 * var(--u)); }
+/* Once the field is live the answer's room is reserved, so nothing below it shifts
+   while the push-in holds its frame. */
+.ask.is-live .answer { min-height: calc(196 * var(--u)); transition: min-height 0.45s cubic-bezier(0.2, 0.9, 0.25, 1); }
+.answer__status {
+  display: flex;
+  align-items: center;
+  gap: calc(8 * var(--u));
+  font-family: 'JetBrains Mono', monospace;
+  font-size: calc(11 * var(--u));
+  color: rgba(163, 163, 163, 0.85);
+  height: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition: height 0.3s ease, opacity 0.25s ease;
+}
+.answer__status.is-on { height: calc(32 * var(--u)); opacity: 1; }
+.answer__src { color: rgba(139, 92, 246, 0.92); }
+
+.answer__body { font-size: calc(15.5 * var(--u)); line-height: 1.68; color: rgba(245, 245, 245, 0.78); }
+.answer__body p { margin: 0 0 calc(13 * var(--u)); }
+.answer__body .w {
+  opacity: 0;
+  filter: blur(calc(3 * var(--u)));
+  transition: opacity 0.34s ease, filter 0.34s ease;
+}
+.answer__body .w.is-in { opacity: 1; filter: none; }
+
+.answer__link {
+  display: inline-flex;
+  align-items: center;
+  gap: calc(7 * var(--u));
+  margin-top: calc(4 * var(--u));
+  padding: calc(7 * var(--u)) calc(13 * var(--u));
+  border: 1px solid var(--border-strong);
+  border-radius: calc(2 * var(--u));
+  font-size: calc(12.5 * var(--u));
+  color: var(--text);
+  text-decoration: none;
+  opacity: 0;
+  transform: translateY(calc(5 * var(--u)));
+  transition: opacity 0.4s ease, transform 0.45s cubic-bezier(0.2, 0.9, 0.25, 1);
+}
+.answer__link.is-in { opacity: 1; transform: none; }
+.answer__link svg { width: calc(11 * var(--u)); height: calc(11 * var(--u)); stroke: var(--accent-soft); stroke-width: 1.8; fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.answer__pad { height: calc(24 * var(--u)); }
+
+/* ── the strip under the list: a real page continues below the fold ─────── */
+.tail {
+  position: relative;
+  margin: calc(30 * var(--u)) var(--pad) 0;
+  padding: calc(26 * var(--u)) calc(32 * var(--u));
+  border: 1px solid var(--border);
+  border-radius: calc(2 * var(--u));
+  background: linear-gradient(90deg, rgba(139, 92, 246, 0.09), rgba(139, 92, 246, 0));
+  display: flex;
+  align-items: center;
+  gap: calc(20 * var(--u));
+}
+.tail__t { font-family: 'Inter Tight', Inter, sans-serif; font-weight: 600; font-size: calc(19 * var(--u)); letter-spacing: calc(-0.3 * var(--u)); }
+.tail__s { margin-top: calc(6 * var(--u)); font-size: calc(14 * var(--u)); color: var(--muted); }
+.tail .cta { margin-left: auto; height: calc(40 * var(--u)); padding: 0 calc(22 * var(--u)); font-size: calc(14.5 * var(--u)); }
+
+/* ── footer ─────────────────────────────────────────────────────────────── */
+.foot {
+  position: relative;
+  display: flex;
+  gap: calc(58 * var(--u));
+  margin-top: calc(40 * var(--u));
+  padding: calc(34 * var(--u)) var(--pad) calc(40 * var(--u));
+  border-top: 1px solid var(--border);
+}
+.foot__brand { width: calc(300 * var(--u)); flex: none; }
+.foot__brand p {
+  margin: calc(12 * var(--u)) 0 0;
+  font-size: calc(13 * var(--u));
+  line-height: 1.6;
+  color: var(--muted);
+}
+.foot__col { display: flex; flex-direction: column; gap: calc(9 * var(--u)); font-size: calc(13 * var(--u)); color: var(--muted); }
+.foot__col h3 {
+  margin: 0 0 calc(3 * var(--u));
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 400;
+  font-size: calc(10.5 * var(--u));
+  letter-spacing: calc(1.2 * var(--u));
+  text-transform: uppercase;
+  color: rgba(245, 245, 245, 0.85);
+}
