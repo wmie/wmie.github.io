@@ -77,8 +77,8 @@ p { color: rgba(245, 245, 245, 0.74); }
 .card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
 .card img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
 .card__in { padding: 18px 20px 22px; }
-.card__k { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); }
-.card h2 { font-family: 'Inter Tight', Inter, sans-serif; font-weight: 600; font-size: 20px; letter-spacing: -0.4px; margin: 10px 0 8px; }
+.card__k { display: block; line-height: 1.5; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); }
+.card h2 { line-height: 1.25; font-family: 'Inter Tight', Inter, sans-serif; font-weight: 600; font-size: 20px; letter-spacing: -0.4px; margin: 10px 0 8px; }
 .card p { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0; }
 
 /* ── la demo ── */
