@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Playground wmie · prototipi di interfaccia</title>
-<meta name="description" content="Tre prototipi di interfaccia costruiti da wmie: una sezione FAQ che risponde anche alle domande non previste, una ricerca che capisce la frase intera, una ricerca semantica dentro una pagina lunga. Sono concept con contenuti fissi.">
+<meta name="description" content="Quattro prototipi di interfaccia costruiti da wmie: una sezione FAQ che risponde anche alle domande non previste, una ricerca che capisce la frase intera su auto e film, una ricerca semantica dentro una pagina lunga. Sono concept con contenuti fissi.">
 <link rel="canonical" href="https://wmie.github.io/">
 <meta property="og:type" content="website">
 <meta property="og:title" content="Playground wmie · prototipi di interfaccia">
@@ -27,13 +27,13 @@
 <main>
   <section class="hero"><div class="wrap">
     <p class="eyebrow">Prototipi</p>
-    <h1>Tre pezzi di interfaccia, visti mentre funzionano</h1>
+    <h1>Quattro pezzi di interfaccia, visti mentre funzionano</h1>
     <p class="lead">Quando una funzione ci sembra buona la costruiamo qui prima di proporla dentro il sito di qualcuno: una pagina sola, dati di prova, nessun backend. Serve a vedere se il comportamento regge fuori dalla nostra testa.</p>
-    <p>Siamo <a href="https://wmie.it">wmie</a>, uno studio di Cagliari che progetta e costruisce siti, e-commerce e web app. Queste tre pagine sono il materiale di scarto buono del lavoro vero.</p>
+    <p>Siamo <a href="https://wmie.it">wmie</a>, uno studio di Cagliari che progetta e costruisce siti, e-commerce e web app. Queste quattro pagine sono il materiale di scarto buono del lavoro vero.</p>
 
     <div class="note">
       <p class="note__t">Da leggere prima di entrare</p>
-      <p>Sono concept. Testi, dati e risposte stanno scritti dentro la pagina: nessuna delle tre interroga un modello o un server mentre la guardate. Partono da sole, digitano le loro domande e si fermano. Nella ricerca conversazionale le frasi sono scritte da noi, ma la griglia è quello che la ricerca trova davvero sul catalogo di prova.</p>
+      <p>Sono concept. Testi, dati e risposte stanno scritti dentro la pagina: nessuna interroga un modello o un server mentre la guardate. Partono da sole, digitano le loro domande e si fermano. Nelle due ricerche conversazionali le frasi sono scritte da noi, ma il risultato è quello che la ricerca trova davvero sul catalogo di prova.</p>
       <p>Ogni pagina qui sotto spiega dove finisce la finzione e cosa servirebbe per portare quella funzione su un sito in produzione.</p>
     </div>
   </div></section>
@@ -50,9 +50,17 @@
     <a class="card" href="./ricerca-conversazionale/">
       <img src="./media/ricerca-conversazionale.jpg" alt="Una griglia di annunci auto che si riordina mentre si scrive una frase nella barra di ricerca" width="1200" height="675" loading="lazy">
       <div class="card__in">
-        <span class="card__k">Ricerca conversazionale</span>
+        <span class="card__k">Ricerca conversazionale · auto</span>
         <h2>Una frase intera al posto di sei filtri</h2>
         <p>«un'auto dal 2022 elettrica con autonomia oltre i 500 km» e la griglia si stringe a ogni pezzo della frase, lettera per lettera. La ricerca sotto è vera.</p>
+      </div>
+    </a>
+    <a class="card" href="./ricerca-film/">
+      <img src="./media/ricerca-film.jpg" alt="Locandine di film che salgono da un mucchio sotto una barra di ricerca" width="1200" height="675" loading="lazy">
+      <div class="card__in">
+        <span class="card__k">Ricerca conversazionale · film</span>
+        <h2>Il catalogo che risponde a una frase</h2>
+        <p>«animazione con voto imdb sopra 8.3 usciti dopo il 2000»: a ogni pezzo della frase le locandine giuste si staccano dal mucchio e salgono in fila, con la fisica vera.</p>
       </div>
     </a>
     <a class="card" href="./ricerca-semantica/">
@@ -86,6 +94,7 @@
   <nav>
     <a href="./faq-infinite/">FAQ infinite</a>
     <a href="./ricerca-conversazionale/">Ricerca conversazionale</a>
+    <a href="./ricerca-film/">Ricerca sui film</a>
     <a href="./ricerca-semantica/">Ricerca semantica</a>
     <a href="./playground/">Esplorazioni</a>
     <a href="https://github.com/wmie">GitHub</a>

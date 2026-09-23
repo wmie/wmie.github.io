@@ -72,7 +72,7 @@ p { color: rgba(245, 245, 245, 0.74); }
 .note p + p { margin-top: 10px; }
 
 /* ── le tre card ── */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 24px 0 80px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; padding: 24px 0 80px; }
 .card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); overflow: hidden; text-decoration: none; transition: border-color 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.25, 1); }
 .card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
 .card img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }

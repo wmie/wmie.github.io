@@ -6,7 +6,7 @@ import { writeFile } from 'node:fs/promises'
 
 const SITE = 'https://wmie.it'
 const OUT = 'https://wmie.github.io'
-const STATIC = ['/', '/faq-infinite/', '/ricerca-conversazionale/', '/ricerca-semantica/']
+const STATIC = ['/', '/faq-infinite/', '/ricerca-conversazionale/', '/ricerca-film/', '/ricerca-semantica/']
 
 const res = await fetch(`${SITE}/api/playground-items?limit=100&depth=1&sort=-publishedAt&locale=it`)
 if (!res.ok) throw new Error(`Playground API ${res.status}`)
@@ -62,7 +62,7 @@ ${image(docs[0]) ? `<meta property="og:image" content="${esc(image(docs[0]))}">`
     <p class="eyebrow">Dal Playground di wmie.it</p>
     <h1>Esplorazioni di design</h1>
     <p class="lead">Mockup, redesign e prototipi che abbiamo pubblicato nel <a href="${SITE}/design">Playground di wmie.it</a>. Qui c'è l'elenco; ogni lavoro si apre sulla sua pagina, con video e contesto.</p>
-    <p>La lista si aggiorna da sola quando pubblichiamo qualcosa di nuovo. I tre prototipi animati stanno <a href="../">nell'indice</a>.</p>
+    <p>La lista si aggiorna da sola quando pubblichiamo qualcosa di nuovo. I prototipi animati stanno <a href="../">nell'indice</a>.</p>
   </div></section>
   <section><div class="wrap"><div class="grid">
 ${cards}
