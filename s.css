@@ -72,13 +72,13 @@ p { color: rgba(245, 245, 245, 0.74); }
 .note p + p { margin-top: 10px; }
 
 /* ── le tre card ── */
-.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 20px; padding: 24px 0 80px; }
+.grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; padding: 24px 0 80px; }
 .card { display: flex; flex-direction: column; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); overflow: hidden; text-decoration: none; transition: border-color 0.25s ease, transform 0.25s cubic-bezier(0.2, 0.9, 0.25, 1); }
 .card:hover { border-color: var(--border-strong); transform: translateY(-2px); }
 .card img { display: block; width: 100%; height: auto; aspect-ratio: 16 / 9; object-fit: cover; background: #000; }
 .card__in { padding: 18px 20px 22px; }
-.card__k { font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); }
-.card h2 { font-family: 'Inter Tight', Inter, sans-serif; font-weight: 600; font-size: 20px; letter-spacing: -0.4px; margin: 10px 0 8px; }
+.card__k { display: block; line-height: 1.5; font-family: 'JetBrains Mono', monospace; font-size: 10.5px; letter-spacing: 1.3px; text-transform: uppercase; color: var(--accent); }
+.card h2 { line-height: 1.25; font-family: 'Inter Tight', Inter, sans-serif; font-weight: 600; font-size: 20px; letter-spacing: -0.4px; margin: 10px 0 8px; }
 .card p { font-size: 14.5px; line-height: 1.55; color: var(--muted); margin: 0; }
 
 /* ── la demo ── */
@@ -133,4 +133,15 @@ footer a:hover { color: var(--text); }
   .fallback { display: block; }
   .cta { padding: 24px; }
   footer nav { margin-left: 0; }
+}
+
+/* ── scheda tecnica ── */
+.spec { display: grid; grid-template-columns: 170px 1fr; margin: 0 0 8px; border: 1px solid var(--border); border-radius: var(--r); background: var(--surface); }
+.spec dt, .spec dd { margin: 0; padding: 13px 18px; border-top: 1px solid var(--border); }
+.spec dt:first-of-type, .spec dd:first-of-type { border-top: 0; }
+.spec dt { font-family: 'JetBrains Mono', monospace; font-size: 11px; letter-spacing: 1.2px; text-transform: uppercase; color: var(--muted); padding-top: 16px; }
+.spec dd { font-size: 15px; line-height: 1.55; color: rgba(245, 245, 245, 0.84); }
+@media (max-width: 900px) {
+  .spec { grid-template-columns: 1fr; }
+  .spec dd { border-top: 0; padding-top: 2px; }
 }
