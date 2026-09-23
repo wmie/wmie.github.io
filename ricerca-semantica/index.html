@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ricerca semantica nella pagina · il ⌘F che capisce la domanda</title>
-<meta name="description" content="Concept di una ricerca semantica dentro una pagina lunga: si fa una domanda in italiano e si accendono le frasi che rispondono, anche quando non contengono nessuna delle parole della domanda. Prototipo wmie.">
+<title>Ricerca semantica nella pagina · semantic in-page search, il ⌘F che capisce la domanda</title>
+<meta name="description" content="Semantic in-page search su una pagina lunga: si fa una domanda in italiano e si evidenziano le frasi che rispondono, anche quando non contengono nessuna delle parole della domanda. Dense retrieval a livello di frase.">
 <link rel="canonical" href="https://wmie.github.io/ricerca-semantica/">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Ricerca semantica nella pagina · il ⌘F che capisce la domanda">
-<meta property="og:description" content="Una domanda in italiano su una pagina legale lunghissima: si accendono le frasi che rispondono, anche senza parole in comune.">
+<meta property="og:title" content="Ricerca semantica nella pagina · semantic in-page search, il ⌘F che capisce la domanda">
+<meta property="og:description" content="Semantic in-page search su una pagina lunga: si fa una domanda in italiano e si evidenziano le frasi che rispondono, anche quando non contengono nessuna delle parole della domanda. Dense retrieval a livello di frase.">
 <meta property="og:url" content="https://wmie.github.io/ricerca-semantica/">
 <meta property="og:image" content="https://wmie.github.io/media/ricerca-semantica.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -26,7 +26,7 @@
 
 <main>
   <section class="hero"><div class="wrap">
-    <p class="eyebrow">Concept 04 · contenuti fissi</p>
+    <p class="eyebrow">Componente 04 · Documenti</p>
     <h1>Il ⌘F che capisce la domanda</h1>
     <p class="lead">Il find del browser cerca la stringa. Su una pagina di condizioni di vendita lunga ventimila caratteri, chi ha un problema non conosce la parola con cui il legale l'ha chiamato, quindi cerca «posso rimandarlo indietro» dove sta scritto «diritto di recesso», e non trova niente.</p>
   </div></section>
@@ -35,38 +35,47 @@
     <div class="chrome">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="chrome__url">wmie.github.io/ricerca-semantica/demo/</span>
-      <button class="chrome__replay" type="button">Rigioca</button>
+      <button class="chrome__replay" type="button">Riavvia</button>
     </div>
-    <div class="stage"><iframe src="./demo/" title="Demo: una ricerca semantica che accende le frasi di una pagina legale che rispondono alla domanda" loading="lazy" scrolling="no"></iframe></div>
-    <p class="stage__hint">La demo parte da sola e si ferma quando ha finito. Dura circa 33 secondi.</p>
+    <div class="stage"><iframe src="./demo/" title="Una ricerca semantica che evidenzia le frasi di una pagina legale che rispondono alla domanda" loading="lazy" scrolling="no"></iframe></div>
+    <p class="stage__hint">Si avvia da solo · circa 33 secondi</p>
     <div class="fallback">
       <video src="../media/ricerca-semantica.mp4" poster="../media/ricerca-semantica.jpg" controls playsinline preload="none"></video>
-      <p class="stage__hint">Da telefono trovate la registrazione. La demo vera è disegnata per una finestra da desktop.</p>
+      <p class="stage__hint">Il componente è pensato per desktop: qui trovate la registrazione.</p>
     </div>
   </div></section>
 
   <section><div class="wrap wrap--text piece">
+    <h2>Scheda tecnica</h2>
+    <dl class="spec">
+      <dt>Componente</dt><dd><code>SemanticFindPanel</code>, evidenziazione nel testo e tacche sulla scrollbar</dd>
+      <dt>Pattern</dt><dd>Semantic in-page search: dense retrieval a livello di frase</dd>
+      <dt>Indicizzazione</dt><dd>Pagina segmentata in frasi e paragrafi, embedding calcolati alla pubblicazione</dd>
+      <dt>Query</dt><dd>Embedding della domanda, similarità coseno, re-ranking con cross-encoder, soglia di confidenza con astensione</dd>
+      <dt>Rendering</dt><dd>CSS Custom Highlight API, per evidenziare senza toccare il DOM; navigazione ↑ ↓ tra le frasi trovate</dd>
+      <dt>Documento</dt><dd>Condizioni di vendita di un negozio di esempio, Ombralarga</dd>
+      <dt>Stato</dt><dd>Prototipo</dd>
+    </dl>
+
     <h2>La prova che conta</h2>
-    <p>La pagina della demo è le condizioni generali di vendita di un negozio di ombrelloni che non esiste, scritte nell'italiano in cui vengono scritte davvero. Le due domande della demo sono state costruite con un vincolo: nessuna parola piena della domanda compare da nessuna parte nella pagina. Un ⌘F letterale restituisce zero, e il pannello lo dichiara mentre risponde.</p>
+    <p>Le due domande della scena sono state scelte con un vincolo: nessuna parola piena della domanda compare da nessuna parte nella pagina. Un ⌘F letterale restituisce zero, e il pannello lo dichiara mentre risponde.</p>
     <p>Le frasi che rispondono si accendono dentro il testo, con il paragrafo intorno schiarito per il contesto. Sulla barra laterale compare una tacca per ogni frase accesa, così si vede subito quanto è sparsa la risposta nel documento, e le frecce del pannello ci saltano sopra una alla volta.</p>
 
-    <h2>Cosa è finto, qui dentro</h2>
-    <p>Tutto: la domanda viene digitata da sola, le frasi da accendere sono segnate a mano dentro un file JSON, i millisecondi che il pannello dichiara sono un numero scritto da noi. Il pannello non accetta quello che scrivete. La demo mostra il comportamento e l'interfaccia, non il motore.</p>
-    <p>Anche il negozio è inventato, testo legale compreso. Non è un modello da copiare per le vostre condizioni di vendita.</p>
+    <h2>In produzione</h2>
+    <p>La pagina viene spezzata in passaggi e gli embedding si calcolano una volta, alla pubblicazione. La domanda finisce nello stesso spazio, un re-ranking ordina i candidati e una soglia decide quando il pannello deve dire che non lo sa invece di accendere la frase meno peggio. È l'ultima parte quella che decide se la funzione è utile o fastidiosa: su un documento legale una risposta sbagliata evidenziata in viola fa più danno del silenzio.</p>
 
-    <h2>Cosa servirebbe per farla funzionare davvero</h2>
-    <p>La pagina spezzata in passaggi, gli embedding dei passaggi calcolati una volta e tenuti aggiornati alla pubblicazione, la domanda trasformata nello stesso spazio, una soglia sotto la quale il pannello dice che non lo sa invece di accendere la frase meno peggio. È l'ultima parte quella che decide se la funzione è utile o fastidiosa: su un documento legale una risposta sbagliata evidenziata in viola fa più danno del silenzio.</p>
-    <p>Ha senso su documenti lunghi che le persone consultano invece di leggere: condizioni, manuali, capitolati, policy, normative interne. Progettiamo cose così dentro i nostri lavori di <a href="https://wmie.it/services/artificial-intelligence">intelligenza artificiale</a> e di <a href="https://wmie.it/services/web-development">sviluppo web</a>.</p>
+    <h2>Dove ha senso</h2>
+    <p>Su documenti lunghi che le persone consultano invece di leggere: condizioni, manuali, capitolati, policy, normative interne. Progettiamo cose così nei lavori di <a href="https://wmie.it/services/artificial-intelligence">intelligenza artificiale</a> e di <a href="https://wmie.it/services/web-development">sviluppo web</a>.</p>
 
     <div class="cta">
       <h2>Avete una pagina che nessuno riesce a consultare?</h2>
       <p>Se i vostri clienti scrivono all'assistenza per una cosa che sul sito c'è già scritta, il problema è di solito recuperabile.</p>
       <div class="cta__row">
         <a class="btn" href="https://wmie.it/contacts">Parliamo</a>
-        <a class="btn btn--ghost" href="../faq-infinite/">Primo concept</a>
+        <a class="btn btn--ghost" href="../faq-infinite/">Primo componente</a>
       </div>
     </div>
-    <a class="back" href="../">← Tutti i prototipi</a>
+    <a class="back" href="../">← Tutti i componenti</a>
   </div></section>
 </main>
 

@@ -1,37 +1,33 @@
 # wmie playground
 
-Prototipi di interfaccia pubblicati su <https://wmie.github.io/>.
+Componenti di interfaccia sviluppati da [wmie](https://wmie.it), pubblicati su <https://wmie.github.io/>.
+Ogni pagina mostra il componente in funzione e la sua scheda tecnica.
 
-Ogni pagina è un **concept**: i testi, i dati e le risposte stanno scritti dentro la demo.
-Nessuna interroga un modello o un backend mentre gira, e tutte partono da sole. Servono a mostrare un
-comportamento, non a essere un prodotto.
-
-| Demo | Cosa mostra | Interattiva |
+| Pagina | Componente | Pattern |
 |---|---|---|
-| [FAQ infinite](https://wmie.github.io/faq-infinite/) | Un accordion di FAQ con una riga in più dove il visitatore scrive la sua domanda | No, si recita da sola |
-| [Ricerca conversazionale](https://wmie.github.io/ricerca-conversazionale/) | Una frase in italiano al posto di sei filtri, su un catalogo auto | No, si recita da sola; la ricerca sotto è vera sul catalogo di prova |
-| [Ricerca sui film](https://wmie.github.io/ricerca-film/) | La stessa ricerca su un catalogo di film, con le locandine che salgono da un mucchio fisico | No, si recita da sola; la ricerca sotto è vera |
-| [Ricerca semantica](https://wmie.github.io/ricerca-semantica/) | Le frasi di una pagina legale che rispondono a una domanda, senza parole in comune | No, si recita da sola |
+| [FAQ infinite](https://wmie.github.io/faq-infinite/) | `FaqAccordion` + `AskRow` | Retrieval-augmented generation (RAG) con citazione della fonte |
+| [Ricerca sulle auto](https://wmie.github.io/ricerca-conversazionale/) | `NaturalLanguageSearchBar` + `ResultGrid` | Natural-language faceted search (query-to-filter parsing) |
+| [Ricerca sui film](https://wmie.github.io/ricerca-film/) | `NaturalLanguageSearchBar` + `PhysicsResultPile` | Natural-language faceted search, reveal fisico (matter-js) |
+| [Ricerca semantica](https://wmie.github.io/ricerca-semantica/) | `SemanticFindPanel` | Semantic in-page search, dense retrieval a livello di frase |
+| [Esplorazioni di design](https://wmie.github.io/playground/) | — | Elenco sincronizzato con il Playground di wmie.it |
 
 ## Struttura
 
 ```
 index.html              indice
-<demo>/index.html       la pagina che racconta la demo
-<demo>/demo/            la demo, disegnata per una finestra 1664x936 e scalata via transform
-media/                  registrazioni leggere e poster (fallback da telefono)
+<pagina>/index.html     il componente, la scheda tecnica, il contesto
+<pagina>/demo/          il componente isolato, disegnato per una finestra 1664x936 e scalato via transform
+playground/             generata da scripts/playground.mjs dall'API pubblica di wmie.it
+media/                  registrazioni leggere e poster, mostrate sotto i 900px
 ```
 
-Questo repository contiene il sito pubblicato, non i sorgenti. La ricerca conversazionale
-è il build di un progetto Vite + React + matter-js che teniamo separato.
+Lo stato di ogni componente è indicato nella sua scheda tecnica.
 
 ## Crediti
 
-- Foto delle auto: [Unsplash](https://unsplash.com), usate secondo la Unsplash License.
-- Locandine dei film: dei rispettivi studi e distributori, usate a scopo dimostrativo. Titoli, anni e voti IMDb reali al momento della raccolta.
-- Immagini degli immobili: [picsum.photos](https://picsum.photos), placeholder.
-- Modelli, versioni, cavalli e autonomia delle auto sono reali; prezzi e chilometri sono
-  verosimili e inventati. Il negozio "Ombralarga" della ricerca semantica non esiste, testo
-  legale compreso.
+- Foto delle auto: [Unsplash](https://unsplash.com), Unsplash License. Prezzi e chilometri indicativi.
+- Locandine dei film: dei rispettivi studi e distributori. Titoli, anni e voti IMDb al momento della raccolta.
+- Immagini degli immobili: [picsum.photos](https://picsum.photos).
+- Il negozio "Ombralarga" della ricerca semantica è un esempio.
 
 Fatto da [wmie](https://wmie.it), Cagliari.

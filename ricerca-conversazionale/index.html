@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ricerca conversazionale · una frase intera al posto di sei filtri</title>
-<meta name="description" content="Prototipo di ricerca su catalogo: si scrive una frase in italiano e la griglia si stringe a ogni clausola, lettera per lettera. Provala, la ricerca è vera sul catalogo di prova. Concept wmie.">
+<title>Ricerca conversazionale · natural language search con estrazione di filtri</title>
+<meta name="description" content="Una barra di ricerca in linguaggio naturale su un catalogo auto: la frase viene tradotta in filtri strutturati (attributi, range numerici, negazioni) e la griglia si aggiorna a ogni tasto. Natural-language faceted search.">
 <link rel="canonical" href="https://wmie.github.io/ricerca-conversazionale/">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Ricerca conversazionale · una frase intera al posto di sei filtri">
-<meta property="og:description" content="Si scrive una frase in italiano e la griglia si stringe a ogni clausola, lettera per lettera.">
+<meta property="og:title" content="Ricerca conversazionale · natural language search con estrazione di filtri">
+<meta property="og:description" content="Una barra di ricerca in linguaggio naturale su un catalogo auto: la frase viene tradotta in filtri strutturati (attributi, range numerici, negazioni) e la griglia si aggiorna a ogni tasto. Natural-language faceted search.">
 <meta property="og:url" content="https://wmie.github.io/ricerca-conversazionale/">
 <meta property="og:image" content="https://wmie.github.io/media/ricerca-conversazionale.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -26,41 +26,48 @@
 
 <main>
   <section class="hero"><div class="wrap">
-    <p class="eyebrow">Concept 02 · ricerca vera, frasi scritte da noi</p>
+    <p class="eyebrow">Componente 02 · E-commerce</p>
     <h1>Una frase intera al posto di sei filtri</h1>
-    <p class="lead">Su un catalogo, la barra di ricerca serve per i nomi e i filtri servono per tutto il resto. Chi compra però ha in testa una frase sola: «un'auto dal 2022 elettrica con autonomia oltre i 500 km». Questo prototipo prende quella frase e stringe la griglia a ogni pezzo, mentre viene scritta.</p>
+    <p class="lead">Su un catalogo, la barra di ricerca serve per i nomi e i filtri servono per tutto il resto. Chi compra però ha in testa una frase sola: «un'auto dal 2022 elettrica con autonomia oltre i 500 km». Questo componente prende quella frase e stringe la griglia a ogni pezzo, mentre viene scritta.</p>
   </div></section>
 
   <section><div class="wrap">
     <div class="chrome">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="chrome__url">wmie.github.io/ricerca-conversazionale/demo/</span>
-      <button class="chrome__replay" type="button">Rigioca</button>
+      <button class="chrome__replay" type="button">Riavvia</button>
     </div>
-    <div class="stage"><iframe src="./demo/?set=veicoli&amp;autoplay=1&amp;queries=3&amp;hold=1700" title="Demo: una griglia di annunci auto che si riordina mentre si scrive una frase" loading="lazy" scrolling="no"></iframe></div>
-    <p class="stage__hint">La demo scrive da sola tre richieste e si ferma quando ha finito. Dura circa 35 secondi.</p>
+    <div class="stage"><iframe src="./demo/?set=veicoli&amp;autoplay=1&amp;queries=3&amp;hold=1700" title="Una griglia di annunci auto che si riordina mentre si scrive una frase" loading="lazy" scrolling="no"></iframe></div>
+    <p class="stage__hint">Si avvia da solo · circa 35 secondi</p>
     <div class="fallback">
       <video src="../media/ricerca-conversazionale.mp4" poster="../media/ricerca-conversazionale.jpg" controls playsinline preload="none"></video>
-      <p class="stage__hint">Da telefono trovate la registrazione. La demo vera è disegnata per una finestra da desktop.</p>
+      <p class="stage__hint">Il componente è pensato per desktop: qui trovate la registrazione.</p>
     </div>
   </div></section>
 
   <section><div class="wrap wrap--text piece">
+    <h2>Scheda tecnica</h2>
+    <dl class="spec">
+      <dt>Componente</dt><dd><code>NaturalLanguageSearchBar</code> con <code>ResultGrid</code> a riordino animato (FLIP)</dd>
+      <dt>Pattern</dt><dd>Natural-language faceted search: query-to-filter parsing</dd>
+      <dt>Parsing</dt><dd>Estrazione di attributi, range numerici (<code>sotto i 70k</code>, <code>dal 2021</code>, <code>più di 400 cv</code>) e negazioni; stemming italiano, match per prefisso</dd>
+      <dt>Esecuzione</dt><dd>Incrementale a ogni tasto, 140 ms dal tasto alla risposta, ordine dei risultati stabile</dd>
+      <dt>In produzione</dt><dd>Parser con LLM a output strutturato (JSON Schema) o grammatica dedicata, query su un indice con facet: Algolia, Meilisearch o Typesense</dd>
+      <dt>Catalogo</dt><dd>24 vetture, modelli e specifiche reali, prezzi e chilometri indicativi; foto Unsplash</dd>
+      <dt>Stato</dt><dd>Prototipo</dd>
+    </dl>
+
     <h2>La regola che ci siamo dati</h2>
     <p>Una query che un clic su un filtro può sostituire non vale la funzione. Se «elettriche» è già una casella nella colonna di sinistra, scriverlo in una barra è un passo indietro. Quello che i filtri non fanno è tenere insieme cinque vincoli di natura diversa, mescolare numeri e parole, e accettare una negazione buttata lì in fondo.</p>
-    <p>Per questo la demo risponde a ogni clausola invece che alla frase finita. «suv» taglia il catalogo, «ibrido» lo taglia ancora, «sotto 60k» ancora, e ogni passaggio si vede: le card che restano non si rimescolano, escono solo quelle che non ci stanno più. Chi guarda capisce il meccanismo senza che nessuno glielo spieghi.</p>
+    <p>Per questo la griglia risponde a ogni clausola invece che alla frase finita. «per la famiglia» taglia il catalogo, «sotto i 70k» lo taglia ancora, «con più di 300 cv» ancora, e ogni passaggio si vede: le card che restano non si rimescolano, escono solo quelle che non ci stanno più. Chi guarda capisce il meccanismo senza che nessuno glielo spieghi.</p>
 
     <h2>Cosa capisce</h2>
     <ul>
-      <li><strong>Parole sugli attributi</strong> (marca, alimentazione, carrozzeria, cambio, trazione), tutte in AND. Una parola a metà vale per prefisso, le desinenze non contano, una parola che non conosce viene ignorata invece di azzerare tutto.</li>
-      <li><strong>Numeri come vincoli:</strong> <code>sotto 60k</code>, <code>meno di 30.000 km</code>, <code>dal 2022</code>, <code>almeno 400 cv</code>, <code>autonomia oltre i 500 km</code>. «sopra» e «sotto» sono stretti, «almeno» e «max» comprendono l'estremo.</li>
-      <li><strong>Negazioni:</strong> <code>ma non suv</code>, <code>senza trazione integrale</code>.</li>
+      <li><strong>Parole sugli attributi</strong> (marca, alimentazione, carrozzeria, cambio, trazione), tutte in AND. Una parola a metà vale per prefisso, le desinenze non contano, una parola sconosciuta viene ignorata invece di azzerare tutto.</li>
+      <li><strong>Numeri come vincoli:</strong> <code>sotto i 70k</code>, <code>meno di 30.000 km</code>, <code>dal 2022</code>, <code>più di 400 cv</code>, <code>autonomia oltre i 500 km</code>. «sopra» e «sotto» sono stretti, «almeno» e «max» comprendono l'estremo.</li>
+      <li><strong>Negazioni:</strong> <code>ma non suv</code>, <code>che non sia elettrica</code>.</li>
       <li><strong>I refusi</strong> non rompono niente: la riga sopravvive un secondo a un testo che non trova nulla, il tempo di correggere.</li>
     </ul>
-
-    <h2>Cosa è finto, qui dentro</h2>
-    <p>Le tre frasi le abbiamo scritte noi e vengono digitate da uno script, ma la risposta no: la griglia che vedete è quello che la ricerca trova davvero sul catalogo, ricalcolato in locale a ogni tasto. Quello che è inventato sono i dati. I modelli, le versioni, i cavalli e l'autonomia sono quelli reali, mentre prezzi e chilometri sono verosimili e scritti da noi; le foto vengono da Unsplash. Non c'è nessun concessionario dietro e nessuna macchina in vendita.</p>
-    <p>Su un catalogo vero il pezzo che cambia è il motore di ricerca sotto, che diventa un indice sul database dei prodotti. La parte che vedete, il comportamento della griglia e la lettura della frase, resta quella.</p>
 
     <h2>Dove ha senso</h2>
     <p>Su un e-commerce con molte varianti, su un portale di annunci, su un configuratore. Ovunque ci sia una colonna di filtri che nessuno apre perché costa sei clic. È il tipo di intervento che progettiamo quando lavoriamo su <a href="https://wmie.it/services/ecommerce">e-commerce</a> e su <a href="https://wmie.it/services/app">web app su misura</a>.</p>
@@ -73,7 +80,7 @@
         <a class="btn btn--ghost" href="../ricerca-film/">La versione sui film</a>
       </div>
     </div>
-    <a class="back" href="../">← Tutti i prototipi</a>
+    <a class="back" href="../">← Tutti i componenti</a>
   </div></section>
 </main>
 

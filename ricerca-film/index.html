@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ricerca conversazionale sui film · il catalogo che risponde a una frase</title>
-<meta name="description" content="Prototipo di ricerca su un catalogo di film: si scrive «animazione con voto imdb sopra 8.3 usciti dopo il 2000» e le locandine giuste salgono dal mucchio, clausola dopo clausola. Concept wmie.">
+<title>Ricerca conversazionale sui film · natural language search con reveal fisico dei risultati</title>
+<meta name="description" content="Ricerca in linguaggio naturale su un catalogo di film: «animazione con voto imdb sopra 8.3 usciti dopo il 2000» e le locandine giuste salgono da un mucchio simulato con la fisica, clausola dopo clausola.">
 <link rel="canonical" href="https://wmie.github.io/ricerca-film/">
 <meta property="og:type" content="article">
-<meta property="og:title" content="Ricerca conversazionale sui film · il catalogo che risponde a una frase">
-<meta property="og:description" content="Si scrive una frase e le locandine giuste salgono dal mucchio, clausola dopo clausola.">
+<meta property="og:title" content="Ricerca conversazionale sui film · natural language search con reveal fisico dei risultati">
+<meta property="og:description" content="Ricerca in linguaggio naturale su un catalogo di film: «animazione con voto imdb sopra 8.3 usciti dopo il 2000» e le locandine giuste salgono da un mucchio simulato con la fisica, clausola dopo clausola.">
 <meta property="og:url" content="https://wmie.github.io/ricerca-film/">
 <meta property="og:image" content="https://wmie.github.io/media/ricerca-film.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -26,7 +26,7 @@
 
 <main>
   <section class="hero"><div class="wrap">
-    <p class="eyebrow">Concept 03 · ricerca vera, frasi scritte da noi</p>
+    <p class="eyebrow">Componente 03 · Cataloghi</p>
     <h1>Il catalogo che risponde a una frase</h1>
     <p class="lead">Quarantacinque film ammucchiati in fondo alla pagina. Si scrive «animazione con voto imdb sopra 8.3 usciti dopo il 2000» e a ogni pezzo della frase le locandine giuste si staccano dal mucchio e salgono in fila sotto la barra; quelle che smettono di valere ricadono giù.</p>
   </div></section>
@@ -35,20 +35,31 @@
     <div class="chrome">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="chrome__url">wmie.github.io/ricerca-film/</span>
-      <button class="chrome__replay" type="button">Rigioca</button>
+      <button class="chrome__replay" type="button">Riavvia</button>
     </div>
-    <div class="stage"><iframe src="../ricerca-conversazionale/demo/?set=film&amp;autoplay=1&amp;queries=3&amp;hold=1600" title="Demo: locandine di film che salgono da un mucchio mentre si scrive una frase di ricerca" loading="lazy" scrolling="no"></iframe></div>
-    <p class="stage__hint">La demo scrive da sola tre richieste e si ferma quando ha finito. Dura circa 30 secondi.</p>
+    <div class="stage"><iframe src="../ricerca-conversazionale/demo/?set=film&amp;autoplay=1&amp;queries=3&amp;hold=1600" title="Locandine di film che salgono da un mucchio mentre si scrive una frase di ricerca" loading="lazy" scrolling="no"></iframe></div>
+    <p class="stage__hint">Si avvia da solo · circa 30 secondi</p>
     <div class="fallback">
       <video src="../media/ricerca-film.mp4" poster="../media/ricerca-film.jpg" controls playsinline preload="none"></video>
-      <p class="stage__hint">Da telefono trovate la registrazione. La demo vera è disegnata per una finestra da desktop.</p>
+      <p class="stage__hint">Il componente è pensato per desktop: qui trovate la registrazione.</p>
     </div>
   </div></section>
 
   <section><div class="wrap wrap--text piece">
+    <h2>Scheda tecnica</h2>
+    <dl class="spec">
+      <dt>Componente</dt><dd><code>NaturalLanguageSearchBar</code> con <code>PhysicsResultPile</code></dd>
+      <dt>Pattern</dt><dd>Natural-language faceted search, stesso parser della versione auto</dd>
+      <dt>Fisica</dt><dd>matter-js: corpi rigidi con massa e attrito; il risultato viene richiamato verso lo slot da una molla sotto-smorzata (ζ ≈ 0,7)</dd>
+      <dt>Rendering</dt><dd>Un nodo DOM e un corpo fisico per card per tutta la sessione, posizioni copiate nel <code>transform</code> da un solo <code>requestAnimationFrame</code></dd>
+      <dt>In produzione</dt><dd>Stessa pipeline di parsing su un indice del catalogo; la fisica resta lato client</dd>
+      <dt>Catalogo</dt><dd>45 titoli con voto IMDb; locandine dei rispettivi studi e distributori</dd>
+      <dt>Stato</dt><dd>Prototipo</dd>
+    </dl>
+
     <h2>Lo stesso motore, un altro catalogo</h2>
     <p>È la stessa ricerca delle <a href="../ricerca-conversazionale/">auto</a>, messa su un catalogo che tutti conoscono. Genere, regista, anno e voto IMDb diventano vincoli che si sommano mentre la frase viene scritta: «animazione» ne tiene otto, «con voto imdb sopra 8.3» ne lascia quattro, «usciti dopo il 2000» tre. Il risultato si restringe senza rimescolarsi, così si vede quale parola ha tolto quale film.</p>
-    <p>Qui abbiamo scelto un'altra forma per il catalogo: invece di una griglia che si riordina, un mucchio con la fisica vera. Ogni locandina è un corpo con massa e attrito; quando la ricerca la chiama, una molla la tira verso il suo posto nella fila e la fa oscillare un attimo prima di fermarsi. Serve a far capire in un colpo d'occhio cosa entra e cosa esce, anche a chi guarda il video senza audio in un feed.</p>
+    <p>Qui il catalogo ha un'altra forma: invece di una griglia che si riordina, un mucchio con la fisica vera. Ogni locandina è un corpo con massa e attrito; quando la ricerca la chiama, una molla la tira verso il suo posto nella fila e la fa oscillare un attimo prima di fermarsi. Si capisce in un colpo d'occhio cosa entra e cosa esce, anche guardando senza audio in un feed.</p>
 
     <h2>Cosa capisce</h2>
     <ul>
@@ -57,21 +68,18 @@
       <li><strong>Negazioni</strong> e parole sconosciute: un refuso non azzera la fila, viene ignorato.</li>
     </ul>
 
-    <h2>Cosa è finto, qui dentro</h2>
-    <p>Le tre frasi sono scritte da noi e digitate da uno script: la barra non si può usare. La risposta invece è vera, calcolata sul momento sul catalogo della demo. Titoli, anni e voti IMDb sono quelli reali al momento della raccolta; generi e registi sono etichette che abbiamo scritto a mano. Le locandine appartengono ai rispettivi studi e distributori e sono qui solo per la demo.</p>
-
     <h2>Dove ha senso</h2>
-    <p>Ovunque un catalogo si esplori per caratteristiche più che per nome: piattaforme di contenuti, cataloghi editoriali, archivi, prodotti con tante varianti. È il genere di intervento che progettiamo nei nostri lavori di <a href="https://wmie.it/services/app">web app su misura</a> e di <a href="https://wmie.it/services/artificial-intelligence">intelligenza artificiale</a>.</p>
+    <p>Ovunque un catalogo si esplori per caratteristiche più che per nome: piattaforme di contenuti, cataloghi editoriali, archivi, prodotti con tante varianti. È il genere di intervento che progettiamo nelle <a href="https://wmie.it/services/app">web app su misura</a> e nei progetti di <a href="https://wmie.it/services/artificial-intelligence">intelligenza artificiale</a>.</p>
 
     <div class="cta">
       <h2>Avete un catalogo che si cerca solo per nome?</h2>
       <p>Vediamo insieme come lo cercano davvero le persone, e se una frase può sostituire i filtri.</p>
       <div class="cta__row">
         <a class="btn" href="https://wmie.it/contacts">Parliamo</a>
-        <a class="btn btn--ghost" href="../ricerca-semantica/">Prossimo concept</a>
+        <a class="btn btn--ghost" href="../ricerca-semantica/">Prossimo componente</a>
       </div>
     </div>
-    <a class="back" href="../">← Tutti i prototipi</a>
+    <a class="back" href="../">← Tutti i componenti</a>
   </div></section>
 </main>
 
