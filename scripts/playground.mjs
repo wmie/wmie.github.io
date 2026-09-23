@@ -62,7 +62,7 @@ ${image(docs[0]) ? `<meta property="og:image" content="${esc(image(docs[0]))}">`
     <p class="eyebrow">Dal Playground di wmie.it</p>
     <h1>Esplorazioni di design</h1>
     <p class="lead">Mockup, redesign e prototipi che abbiamo pubblicato nel <a href="${SITE}/design">Playground di wmie.it</a>. Qui c'è l'elenco; ogni lavoro si apre sulla sua pagina, con video e contesto.</p>
-    <p>La lista si aggiorna da sola quando pubblichiamo qualcosa di nuovo. I tre prototipi giocabili stanno <a href="../">nell'indice</a>.</p>
+    <p>La lista si aggiorna da sola quando pubblichiamo qualcosa di nuovo. I tre prototipi animati stanno <a href="../">nell'indice</a>.</p>
   </div></section>
   <section><div class="wrap"><div class="grid">
 ${cards}

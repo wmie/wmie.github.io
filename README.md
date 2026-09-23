@@ -3,13 +3,13 @@
 Prototipi di interfaccia pubblicati su <https://wmie.github.io/>.
 
 Ogni pagina è un **concept**: i testi, i dati e le risposte stanno scritti dentro la demo.
-Nessuna delle tre interroga un modello o un backend mentre gira. Servono a mostrare un
+Nessuna delle tre interroga un modello o un backend mentre gira, e tutte e tre partono da sole. Servono a mostrare un
 comportamento, non a essere un prodotto.
 
 | Demo | Cosa mostra | Interattiva |
 |---|---|---|
 | [FAQ infinite](https://wmie.github.io/faq-infinite/) | Un accordion di FAQ con una riga in più dove il visitatore scrive la sua domanda | No, si recita da sola |
-| [Ricerca conversazionale](https://wmie.github.io/ricerca-conversazionale/) | Una frase in italiano al posto di sei filtri, su un catalogo auto | Sì, la ricerca è vera sul catalogo di prova |
+| [Ricerca conversazionale](https://wmie.github.io/ricerca-conversazionale/) | Una frase in italiano al posto di sei filtri, su un catalogo auto | No, si recita da sola; la ricerca sotto è vera sul catalogo di prova |
 | [Ricerca semantica](https://wmie.github.io/ricerca-semantica/) | Le frasi di una pagina legale che rispondono a una domanda, senza parole in comune | No, si recita da sola |
 
 ## Struttura
