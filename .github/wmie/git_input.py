@@ -48,6 +48,8 @@ def tree_entry(directory, commit, path, token=""):
     fields, actual_path = entries[0].split(b"\t", 1)
     mode, kind, oid = fields.decode().split()
     require(actual_path.decode() == path, "git_path_mismatch")
+    if kind == 'tree':
+        return None
     return {"mode": mode, "kind": kind, "oid": oid}
 
 

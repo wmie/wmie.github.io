@@ -14,7 +14,12 @@ def pr_condition(expression, context=None):
         return True
     if "''" in expression or '\\' in expression:
         return UNKNOWN
-    text = re.sub(r'!(?!=)', ' not ', expression.replace('&&', ' and ').replace('||', ' or ')).strip()
+    parts = re.split(r"('[^']*')", expression)
+    for index in range(0, len(parts), 2):
+        if re.search(r'!(?!=)', parts[index]) or '"' in parts[index]:
+            return UNKNOWN
+        parts[index] = parts[index].replace('&&', ' and ').replace('||', ' or ')
+    text = ''.join(parts).strip()
     try:
         tree = ast.parse(text, mode='eval').body
     except (SyntaxError, ValueError):
