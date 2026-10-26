@@ -14,7 +14,7 @@
     ".github/wmie/draft.py": "db5af8f24e3af19640b7a17f23fe88d19703119bf06564de7adc83ae0d06d107",
     ".github/wmie/evidence.py": "ed27e30166dddf3628f9458c3402325f99ae474d69102ecfff286aef3a278a5d",
     ".github/wmie/git_input.py": "c0459f28911dc99681b746aa1152594eeb3edde2793683c2f01b8fcaf4eda743",
-    ".github/wmie/governance.py": "c22bb796a7cdd539dace6848f4598cf41265e6f94a1be34fc1de854abe502753",
+    ".github/wmie/governance.py": "244b04ecf6930ff390f5865c084660ff58f9a7e25cbd12d364e8b4f8bf8fce6c",
     ".github/wmie/merge.py": "5821ba97f0053fb44595b4b23429e30c95989cb04d4d29c687364e67962e6666",
     ".github/wmie/requirements.txt": "0969da99a0bc2a1b71ed50584560f4588a37567ac63af3ddbaf3c4617ca5621a",
     ".github/wmie/review.py": "5d4853aeabdd99e57f57f0166f669e163aa228851e07b9ff85b9b85a046b3912",
@@ -28,6 +28,6 @@
     ".github/workflows/wmie-review.md": "5ddc1a3c926c641db9e6731bce61134176d574618717e57e9caa40a8425e654a"
   },
   "schema_version": 1,
-  "source_commit": "c1b6c405db4237bc943744ac332fa8487aeb7103",
+  "source_commit": "38f1cc5e795963c43a562c99c4d5e723221c1c5c",
   "source_repository": "wmie/.github"
 }

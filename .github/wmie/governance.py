@@ -54,9 +54,17 @@ def set_check(api, repository, pr, name, *, success, details, read_api=None):
     checks = read_api.pages(f"/repos/{repository}/commits/{pr['head']['sha']}/check-runs?filter=latest", "check_runs")
     candidates = [item for item in checks if item.get("name") == name and item.get("app", {}).get("id") == APP_ID]
     existing = max(candidates, key=lambda item: item["id"], default=None)
-    body = {"name": name, "status": "completed", "conclusion": "success" if success else "failure", "external_id": external_id,
-            "output": {"title": "Complete" if success else details.get("code", "Incomplete"),
+    pending = not success and name == "WMIE approval" and details.get("state") == "review_pending"
+    body = {"name": name, "status": "in_progress" if pending else "completed", "external_id": external_id,
+            "details_url": (f"https://github.com/{repository}/actions/runs/{details['run_id']}" if details.get("run_id")
+                            else f"https://github.com/{repository}/pull/{pr['number']}/checks"),
+            "output": {"title": "Review in progress" if pending else "Complete" if success else details.get("code", "Incomplete"),
                        "summary": json.dumps(details, sort_keys=True, ensure_ascii=False)}}
+    if not pending:
+        body["conclusion"] = "success" if success else "failure"
+    # Start a new run rather than carry a completed conclusion into pending work.
+    if pending and existing and existing.get("status") == "completed":
+        existing = None
     if existing:
         result = api.request("PATCH", f"/repos/{repository}/check-runs/{existing['id']}", body)
     else:
@@ -264,7 +272,12 @@ def main():
             if result.get("state") == "approved":
                 results.append(dispatch_merge(api, write_api, repository, pr, result))
             if result.get("code") in {"wmie_review_missing", "published_review_stale"} and can_automatically_start_review(event_name, event, pr):
-                results.append(dispatch_review(api, repository, pr))
+                review = dispatch_review(api, repository, pr)
+                results.append(review)
+                if review.get("state") in {"review_dispatched", "review_already_active"}:
+                    details = {**review, "state": "review_pending", "code": "review_pending",
+                               "detail": "Wait for WMIE Review to finish."}
+                    set_check(write_api, repository, pr, "WMIE approval", success=False, details=details, read_api=api)
         except GovernanceError as error:
             failed = True
             results.append({"pr_number": pr_number, "state": "blocked", "code": error.code, "detail": error.detail})
