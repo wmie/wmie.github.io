@@ -28,6 +28,6 @@
     ".github/workflows/wmie-review.md": "5ddc1a3c926c641db9e6731bce61134176d574618717e57e9caa40a8425e654a"
   },
   "schema_version": 1,
-  "source_commit": "800e56ef1c7f6aab1365ea7c6b9fe994292b7eef",
+  "source_commit": "411a2551529c10ef71e49ec303d61c4ac727f47e",
   "source_repository": "wmie/.github"
 }
