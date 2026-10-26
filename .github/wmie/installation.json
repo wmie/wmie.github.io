@@ -1,0 +1,33 @@
+{
+  "default_branch": "main",
+  "files": {
+    ".github/aw/actions-lock.json": "bd4f665e9d98d71117d503cba5b0d0c6011750325f67cbe8c953fae586420b37",
+    ".github/wmie/agent-policy.md": "b68b28294d46841ea79dbb4333d9e90f48b8bc6d65b14015e23379edcb2f786b",
+    ".github/wmie/authoring.py": "9a985957d09e7cada4772466f5516070472b14089b896661d25b7e1f044eeb42",
+    ".github/wmie/baseline.py": "607d233df1b7d2334d736bda21342e70eae817e7ba05bd697c6bcdbc17b7dd6a",
+    ".github/wmie/ci-profile.json": "a469428ba365d4e9fcf243190e12989ea67ad3318fe32520b2deedba8097120d",
+    ".github/wmie/ci.py": "b3011e9a52a33089d593b0bc882706768de63ac8f33ddbc393849ce270d12523",
+    ".github/wmie/ci_filters.py": "8369ef64ae2700eec40cb0f5fd99df591b9e33503c367b66a5513adaba4e7e13",
+    ".github/wmie/control.py": "16705b73df1eaf7ca448177454c6bdc06f4e7142e5a094857374315cc402ebd0",
+    ".github/wmie/core.py": "950436dcc574248c343c5db44ef0c9792e7625b179597ceff5218d46fb265f45",
+    ".github/wmie/diagnostics.py": "bc63ed6c4b5544a503fe113586cefe3b90a913f78920fc6934cedca91104b9da",
+    ".github/wmie/draft.py": "db5af8f24e3af19640b7a17f23fe88d19703119bf06564de7adc83ae0d06d107",
+    ".github/wmie/evidence.py": "ed27e30166dddf3628f9458c3402325f99ae474d69102ecfff286aef3a278a5d",
+    ".github/wmie/git_input.py": "f4074ae20fc9973d8195bbec8a8178ecbd299f06058856ca63dcb4be652280c8",
+    ".github/wmie/governance.py": "c22bb796a7cdd539dace6848f4598cf41265e6f94a1be34fc1de854abe502753",
+    ".github/wmie/merge.py": "5821ba97f0053fb44595b4b23429e30c95989cb04d4d29c687364e67962e6666",
+    ".github/wmie/requirements.txt": "0969da99a0bc2a1b71ed50584560f4588a37567ac63af3ddbaf3c4617ca5621a",
+    ".github/wmie/review.py": "5d4853aeabdd99e57f57f0166f669e163aa228851e07b9ff85b9b85a046b3912",
+    ".github/wmie/tool-versions.json": "8da08c99f900add5e138511b977990a1cb692a07e34c99e19803cee1b5ff9f9f",
+    ".github/wmie/workflows.py": "ceca4a48a60c5ed498efd9e849cfcc116117c607f7689becd0ab3f5173c4bcce",
+    ".github/workflows/wmie-ci.yml": "d16689454ca027ca218e72143d37759c14923a761d7378840e11fd63bc4b007d",
+    ".github/workflows/wmie-governance.yml": "135b94cea2f4debb35bbd76d4d014354752d5184ab9f9bb5fe34856c928e1957",
+    ".github/workflows/wmie-merge.yml": "704f47d60516c1a7baf3a58f9a349846374c584eaf45b19ab8db8479963762e6",
+    ".github/workflows/wmie-review-events.yml": "38afd1c9f8f093420e2c2c75d5bc90752d5f86e23832812b856d8d7239543768",
+    ".github/workflows/wmie-review.lock.yml": "e348c9c6afd9ffef17e6e6cda0367b66a7ee14b576d5ec205087f674139af34b",
+    ".github/workflows/wmie-review.md": "5ddc1a3c926c641db9e6731bce61134176d574618717e57e9caa40a8425e654a"
+  },
+  "schema_version": 1,
+  "source_commit": "800e56ef1c7f6aab1365ea7c6b9fe994292b7eef",
+  "source_repository": "wmie/.github"
+}

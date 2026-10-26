@@ -1,0 +1,10 @@
+{
+  "schema_version": 1,
+  "components": [],
+  "external_checks": [],
+  "baseline_checks": [
+    "content",
+    "security"
+  ],
+  "description": "Project checks come from real manifests and approved local overrides."
+}

@@ -1,0 +1,25 @@
+name: WMIE review events
+'on':
+  push:
+    branches-ignore:
+    - main
+  pull_request:
+    types:
+    - opened
+    - synchronize
+    - reopened
+    - ready_for_review
+    - edited
+  pull_request_review:
+    types:
+    - submitted
+    - edited
+    - dismissed
+permissions: {}
+jobs:
+  signal:
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+    - name: Signal a review change
+      run: 'true'
