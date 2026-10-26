@@ -1,0 +1,62 @@
+name: WMIE merge
+run-name: WMIE merge pr=${{ inputs.pr_number }} head=${{ inputs.expected_head }}
+'on':
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      expected_head:
+        required: true
+        type: string
+permissions: {}
+concurrency:
+  group: wmie-merge-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  merge:
+    if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    environment: wmie-review
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: ${{ github.workflow_sha }}
+        path: wmie-control
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install the configuration parser
+      run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt'
+    - name: Mint the constrained merger token
+      id: app
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+      with:
+        client-id: ${{ secrets.WMIE_REVIEW_CLIENT_ID }}
+        private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-contents: write
+        permission-pull-requests: write
+        permission-actions: read
+        permission-checks: read
+    - name: Require the actual approval before merge
+      env:
+        GH_TOKEN: ${{ steps.app.outputs.token }}
+        WMIE_PR_NUMBER: ${{ inputs.pr_number }}
+        WMIE_EXPECTED_HEAD: ${{ inputs.expected_head }}
+        WMIE_AUTOMERGE_ENABLED: ${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}
+      run: python3 wmie-control/.github/wmie/merge.py
+    - name: Preserve the merge result
+      if: always()
+      uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+      with:
+        name: wmie-merge-${{ github.run_id }}
+        path: wmie-merge-result.json
+        if-no-files-found: ignore
+        retention-days: 30

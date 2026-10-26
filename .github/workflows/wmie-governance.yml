@@ -1,0 +1,66 @@
+name: WMIE governance
+'on':
+  workflow_run:
+    workflows:
+    - WMIE CI
+    - WMIE Review
+    - WMIE review events
+    types:
+    - completed
+  push:
+    branches:
+    - main
+  repository_dispatch:
+    types:
+    - wmie-reconcile
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        required: true
+        type: string
+      source_run_id:
+        required: false
+        type: string
+        default: ''
+permissions: {}
+concurrency:
+  group: wmie-governance-${{ github.repository }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  governance:
+    if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    environment: wmie-review
+    permissions:
+      contents: read
+      actions: write
+      checks: read
+      pull-requests: read
+    steps:
+    - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+      with:
+        ref: ${{ github.workflow_sha }}
+        path: wmie-control
+        persist-credentials: false
+    - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install the configuration parser
+      run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt'
+    - name: Mint the WMIE check token
+      id: app
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+      with:
+        client-id: ${{ secrets.WMIE_REVIEW_CLIENT_ID }}
+        private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.event.repository.name }}
+        permission-checks: write
+    - name: Assess the current PR
+      env:
+        GH_TOKEN: ${{ github.token }}
+        WMIE_APP_TOKEN: ${{ steps.app.outputs.token }}
+        WMIE_AUTOMERGE_ENABLED: ${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}
+      run: python3 wmie-control/.github/wmie/governance.py
