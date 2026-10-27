@@ -12,7 +12,7 @@ from urllib.parse import quote
 from control import binding_for_run, ci_evidence, ci_title, live_pr, number, previous_analysis, recent_runs, repository_name, source_filter
 from core import GitHub, GovernanceError, read_json, require
 from diagnostics import native_error_diagnostic
-from evidence import REVIEW_WORKFLOW, native_review_evidence, run_jobs, trusted_run, validate_input_record
+from evidence import canonical_run_title, REVIEW_WORKFLOW, native_review_evidence, run_jobs, trusted_run, validate_input_record
 from review import APP_ID, BOT_ID, review_data, validate_published
 
 
@@ -20,7 +20,7 @@ def published_approval(api, repository, pr, ci):
     reviews = api.pages(f"/repos/{repository}/pulls/{pr['number']}/reviews")
     candidates = [item for item in reviews if item.get("user", {}).get("id") == BOT_ID
                   and item.get("commit_id") == pr["head"]["sha"]]
-    require(candidates, "wmie_review_missing", "Wait for WMIE Review to finish.")
+    require(candidates, "wmie_review_missing", "Wait for the code review to finish.")
     latest = max(candidates, key=lambda item: item["id"])
     # A later incomplete, dismissed, or blocking review cannot reuse an older approval.
     review = api.request("GET", f"/repos/{repository}/pulls/{pr['number']}/reviews/{number(latest['id'])}")
@@ -42,7 +42,7 @@ def published_approval(api, repository, pr, ci):
     original_record = native_review_evidence(api, repository, run, binding["manifest"], review)
     validate_published(review, original_record, binding["manifest"], pr, {name: job.get("conclusion") for name, job in jobs.items()})
     safe_steps = {step.get("name"): step.get("conclusion") for step in jobs["safe_outputs"].get("steps", [])}
-    require(safe_steps.get("WMIE preflight") == "success" and safe_steps.get("Process Safe Outputs") == "success",
+    require([safe_steps[key] for key in ("Validate review before publishing", "WMIE preflight") if key in safe_steps] == ["success"] and safe_steps.get("Process Safe Outputs") == "success",
             "publication_preflight_unproven")
     return {"review_id": review["id"], "run_id": run["id"], "run_attempt": run["run_attempt"],
             "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"]}
@@ -50,15 +50,30 @@ def published_approval(api, repository, pr, ci):
 
 def set_check(api, repository, pr, name, *, success, details, read_api=None):
     read_api = read_api or api
+    legacy = {"Required checks": "WMIE CI", "Code review approval": "WMIE approval"}.get(name)
+    if legacy:
+        branch = pr["base"].get("ref")
+        require(isinstance(branch, str) and branch, "check_target_branch_missing")
+        rules = read_api.pages(f"/repos/{repository}/rules/branches/{quote(branch, safe='')}")
+        required = [check for rule in rules if rule.get("type") == "required_status_checks"
+                    for check in rule.get("parameters", {}).get("required_status_checks", [])]
+        if any(check.get("context") == legacy and check.get("integration_id") in {None, APP_ID} for check in required):
+            set_check(api, repository, pr, legacy, success=success, details=details, read_api=read_api)
     external_id = f"wmie:{name}:{pr['base']['sha']}:{pr['head']['sha']}"
     checks = read_api.pages(f"/repos/{repository}/commits/{pr['head']['sha']}/check-runs?filter=latest", "check_runs")
     candidates = [item for item in checks if item.get("name") == name and item.get("app", {}).get("id") == APP_ID]
     existing = max(candidates, key=lambda item: item["id"], default=None)
-    pending = not success and name == "WMIE approval" and details.get("state") == "review_pending"
+    pending = not success and name in {"Code review approval", "WMIE approval"} and details.get("state") == "review_pending"
     body = {"name": name, "status": "in_progress" if pending else "completed", "external_id": external_id,
             "details_url": (f"https://github.com/{repository}/actions/runs/{details['run_id']}" if details.get("run_id")
                             else f"https://github.com/{repository}/pull/{pr['number']}/checks"),
-            "output": {"title": "Review in progress" if pending else "Complete" if success else details.get("code", "Incomplete"),
+            "output": {"title": "Review in progress" if pending else "Complete" if success else {
+                           "ci_run_missing": "Required checks missing",
+                           "wmie_review_missing": "Code review approval missing",
+                           "application_findings": "Changes requested",
+                           "analysis_incomplete": "Code review incomplete",
+                           "reviewer_technical_error": "Code review process failed",
+                       }.get(details.get("code"), "Required checks incomplete" if details.get("state") == "ci_incomplete" else "Code review incomplete"),
                        "summary": json.dumps(details, sort_keys=True, ensure_ascii=False)}}
     if not pending:
         body["conclusion"] = "success" if success else "failure"
@@ -77,7 +92,7 @@ def review_execution_state(api, repository, pr):
     title = f"WMIE Review pr={pr['number']} base={pr['base']['sha']} head={pr['head']['sha']}"
     unadmitted = None
     for candidate in recent_runs(api, repository, "wmie-review.lock.yml", **source_filter(pr)):
-        if candidate.get("display_title") != title:
+        if canonical_run_title(candidate.get("display_title")) != title:
             continue
         run = trusted_run(api, repository, candidate["id"], REVIEW_WORKFLOW, events={"workflow_dispatch"})
         details = {"run_id": run["id"], "run_attempt": run["run_attempt"], "run_url": f"https://github.com/{repository}/actions/runs/{run['id']}"}
@@ -108,30 +123,30 @@ def assess(api, write_api, repository, pr_number):
         ci = ci_evidence(api, repository, pr)
     except GovernanceError as error:
         details = {"state": "ci_incomplete", "code": error.code, "detail": error.detail}
-        set_check(write_api, repository, pr, "WMIE CI", success=False, details=details, read_api=api)
-        set_check(write_api, repository, pr, "WMIE approval", success=False, details=details, read_api=api)
+        set_check(write_api, repository, pr, "Required checks", success=False, details=details, read_api=api)
+        set_check(write_api, repository, pr, "Code review approval", success=False, details=details, read_api=api)
         return details
-    set_check(write_api, repository, pr, "WMIE CI", success=True, details={"state": "complete", **ci}, read_api=api)
+    set_check(write_api, repository, pr, "Required checks", success=True, details={"state": "complete", **ci}, read_api=api)
     try:
         approval = published_approval(api, repository, pr, ci)
         fresh = live_pr(api, repository, pr_number)
         require(fresh["base"]["sha"] == pr["base"]["sha"] and fresh["head"]["sha"] == pr["head"]["sha"], "approval_commits_changed")
         details = {"state": "approved", **approval, "ci_run_id": ci["run_id"]}
-        set_check(write_api, repository, fresh, "WMIE approval", success=True, details=details, read_api=api)
+        set_check(write_api, repository, fresh, "Code review approval", success=True, details=details, read_api=api)
         return details
     except GovernanceError as error:
         details = {"state": "application_findings" if error.code == "application_findings" else "review_incomplete",
                    "code": error.code, "detail": error.detail}
         if error.code == "wmie_review_missing":
             details.update(review_execution_state(api, repository, pr) or {})
-        set_check(write_api, repository, pr, "WMIE approval", success=False, details=details, read_api=api)
+        set_check(write_api, repository, pr, "Code review approval", success=False, details=details, read_api=api)
         return details
 
 
 def dispatch_ci(api, repository, pr):
     title = ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"])
     existing = next((run for run in recent_runs(api, repository, "wmie-ci.yml", event="workflow_dispatch", **source_filter(pr))
-                     if run.get("display_title") == title), None)
+                     if canonical_run_title(run.get("display_title")) == title), None)
     if existing:
         return {"state": "ci_already_dispatched", "run_id": existing["id"]}
     default_branch = api.request("GET", f"/repos/{repository}")["default_branch"]
@@ -144,7 +159,7 @@ def dispatch_review(api, repository, pr):
     ci = ci_evidence(api, repository, pr)
     title = f"WMIE Review pr={pr['number']} "
     active = next((run for run in recent_runs(api, repository, "wmie-review.lock.yml", **source_filter(pr))
-                   if run.get("display_title", "").startswith(title) and run.get("status") != "completed"), None)
+                   if canonical_run_title(run.get("display_title", "")).startswith(title) and run.get("status") != "completed"), None)
     if active:
         return {"state": "review_already_active", "run_id": active["id"]}
     previous = previous_analysis(api, repository, pr, 0)
@@ -174,10 +189,10 @@ def dispatch_merge(api, write_api, repository, pr, assessment):
         return {"state": "merge_already_reserved", "check_id": previous["id"], "automatic_retry": False}
     # Reserve before dispatch. An uncertain write cannot cause automatic resubmission.
     claim = write_api.request("POST", f"/repos/{repository}/check-runs", {
-        "name": "WMIE merge request", "head_sha": pr["head"]["sha"], "external_id": external_id,
+        "name": "Request merge", "head_sha": pr["head"]["sha"], "external_id": external_id,
         "status": "completed", "conclusion": "neutral", "output": {
             "title": "Automatic merge attempt reserved",
-            "summary": "Read the WMIE merge run for the result. If dispatch fails, reconcile the outcome before a manual retry."}})
+            "summary": "Read the merge run for the result. If dispatch fails, reconcile the outcome before a manual retry."}})
     require(claim.get("app", {}).get("id") == APP_ID, "check_app_identity_mismatch")
     api.request("POST", f"/repos/{repository}/actions/workflows/wmie-merge.yml/dispatches", {
         "ref": default, "inputs": {"pr_number": str(pr["number"]), "expected_head": pr["head"]["sha"]}})
@@ -205,7 +220,7 @@ def affected_prs(api, repository, event_name, event):
         return [item["number"] for item in api.pages(f"/repos/{repository}/pulls?state=open&base={quote(branch, safe='')}")
                 if not item.get("draft")]
     known = {".github/workflows/wmie-ci.yml", ".github/workflows/wmie-review.lock.yml"}
-    match = re.search(r"\bpr=([1-9][0-9]*)\b", run.get("display_title", ""))
+    match = re.search(r"\bpr=([1-9][0-9]*)\b", canonical_run_title(run.get("display_title", "")))
     if match and path in known:
         return [number(match[1])]
     if run.get("pull_requests"):
@@ -221,7 +236,7 @@ def can_automatically_start_review(event_name, event, pr):
     manual = f"WMIE Review pr={pr['number']} base=current head=current"
     # A failed preparation cannot recursively dispatch the same workflow forever.
     # Completion of an older pair can still release a review queued for a newer push.
-    return source.get("display_title") not in {title, manual}
+    return canonical_run_title(source.get("display_title")) not in {title, manual}
 
 
 def should_dispatch_ci(event_name, event):
@@ -246,7 +261,7 @@ def await_source_completion(api, repository, event):
         path = candidate.get("path", "").split("@", 1)[0]
         require(path in {REVIEW_WORKFLOW, ".github/workflows/wmie-ci.yml"}, "untrusted_completion_source")
         run = trusted_run(api, repository, run_id, path, events={"workflow_dispatch"})
-        require(re.search(rf"\bpr={pr_number}\b", run.get("display_title", "")), "completion_pr_mismatch")
+        require(re.search(rf"\bpr={pr_number}\b", canonical_run_title(run.get("display_title", ""))), "completion_pr_mismatch")
         if run.get("status") == "completed":
             return run
         require(time.monotonic() < deadline, "completion_pending", f"Run {run_id} did not finish within 120 seconds.")
@@ -276,8 +291,8 @@ def main():
                 results.append(review)
                 if review.get("state") in {"review_dispatched", "review_already_active"}:
                     details = {**review, "state": "review_pending", "code": "review_pending",
-                               "detail": "Wait for WMIE Review to finish."}
-                    set_check(write_api, repository, pr, "WMIE approval", success=False, details=details, read_api=api)
+                               "detail": "Wait for the code review to finish."}
+                    set_check(write_api, repository, pr, "Code review approval", success=False, details=details, read_api=api)
         except GovernanceError as error:
             failed = True
             results.append({"pr_number": pr_number, "state": "blocked", "code": error.code, "detail": error.detail})

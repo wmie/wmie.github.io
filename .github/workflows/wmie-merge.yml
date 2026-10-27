@@ -1,5 +1,5 @@
-name: WMIE merge
-run-name: WMIE merge pr=${{ inputs.pr_number }} head=${{ inputs.expected_head }}
+name: Merge approved pull request
+run-name: Merge approved pull request pr=${{ inputs.pr_number }} head=${{ inputs.expected_head }}
 'on':
   workflow_dispatch:
     inputs:

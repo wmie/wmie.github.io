@@ -14,6 +14,23 @@ CI_WORKFLOW = ".github/workflows/wmie-ci.yml"
 REVIEW_WORKFLOW = ".github/workflows/wmie-review.lock.yml"
 
 
+def canonical_run_title(title):
+    for visible, internal in (("Pull request checks", "WMIE CI"), ("AI code review", "WMIE Review")):
+        if isinstance(title, str) and title.startswith(visible + " pr="):
+            return internal + title[len(visible):]
+    return title
+
+
+def canonical_job_name(name):
+    aliases = {"Prepare checks": "WMIE plan", "JSON validation": "WMIE content",
+               "Secret scan (Gitleaks)": "WMIE security", "Required checks": "WMIE CI",
+               "Analyze code changes": "agent", "Check review output safety": "detection",
+               "Publish review": "safe_outputs", "Review result": "conclusion"}
+    if isinstance(name, str) and name.startswith("Project checks / "):
+        return "WMIE / " + name.removeprefix("Project checks / ")
+    return aliases.get(name, name)
+
+
 def ci_title(pr_number, base_sha, head_sha):
     require(type(pr_number) is int and pr_number > 0, "invalid_pr_number")
     return f"WMIE CI pr={pr_number} base={sha(base_sha)} head={sha(head_sha)}"
@@ -42,7 +59,7 @@ def run_jobs(api, repository, run):
     jobs = api.pages(f"/repos/{repository}/actions/runs/{run['id']}/attempts/{run['run_attempt']}/jobs", "jobs")
     result = {}
     for job in jobs:
-        name = job.get("name")
+        name = canonical_job_name(job.get("name"))
         require(isinstance(name, str) and name not in result, "ambiguous_job_name", str(name))
         result[name] = job
     return result
@@ -81,7 +98,7 @@ def native_review_evidence(api, repository, run, manifest, review):
 
 
 def validate_ci_run(run, pr, plan, jobs):
-    require(run.get("display_title") == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]),
+    require(canonical_run_title(run.get("display_title")) == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]),
             "ci_commit_binding_mismatch")
     base = pr["base"]
     if base.get("ref") and base.get("ref") == base.get("repo", {}).get("default_branch"):

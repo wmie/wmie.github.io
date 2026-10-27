@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 
 from ci import discover, plan, validate_profile
 from core import GitHub, GovernanceError, digest, output, read_json, require, safe_path, sha, write_json
-from evidence import CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, run_jobs, trusted_run, validate_ci_run, validate_input_record
+from evidence import canonical_run_title, CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, run_jobs, trusted_run, validate_ci_run, validate_input_record
 from git_input import discovery_tree, fetch, git, snapshot
 from review import validate_ci, validate_manifest, validate_native_output
 
@@ -63,8 +63,8 @@ def latest_ci(api, repository, pr):
     title = ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"])
     filters = {"event": "workflow_dispatch", **source_filter(pr)}
     match = next((run for run in recent_runs(api, repository, "wmie-ci.yml", **filters)
-                  if run.get("display_title") == title), None)
-    require(match is not None, "ci_run_missing", "Start WMIE CI for the current base and head.")
+                  if canonical_run_title(run.get("display_title")) == title), None)
+    require(match is not None, "ci_run_missing", "Start Pull request checks for the current base and head.")
     return match["id"]
 
 
@@ -185,7 +185,7 @@ def previous_analysis(api, repository, pr, current_run_id):
     manual_title = f"WMIE Review pr={pr['number']} base=current head=current"
     filters = source_filter(pr)
     for candidate in recent_runs(api, repository, "wmie-review.lock.yml", **filters):
-        if candidate["id"] == current_run_id or candidate.get("display_title") not in {title, manual_title}:
+        if candidate["id"] == current_run_id or canonical_run_title(candidate.get("display_title")) not in {title, manual_title}:
             continue
         run = trusted_run(api, repository, candidate["id"], REVIEW_WORKFLOW, events={"workflow_run", "workflow_dispatch"})
         artifacts = api.pages(f"/repos/{repository}/actions/runs/{run['id']}/artifacts", "artifacts")
@@ -211,7 +211,7 @@ def review_prepare(api, repository, event):
     if os.environ["GITHUB_EVENT_NAME"] == "workflow_run":
         source_run_id = event["workflow_run"]["id"]
         source_run = trusted_run(api, repository, source_run_id, CI_WORKFLOW, events={"workflow_dispatch"})
-        match = re.fullmatch(r"WMIE CI pr=([1-9][0-9]*) base=([a-f0-9]{40}) head=([a-f0-9]{40})", source_run.get("display_title", ""))
+        match = re.fullmatch(r"WMIE CI pr=([1-9][0-9]*) base=([a-f0-9]{40}) head=([a-f0-9]{40})", canonical_run_title(source_run.get("display_title", "")))
         require(match is not None, "ci_title_invalid")
         pr_number = number(match[1])
     else:
@@ -290,7 +290,7 @@ def ci_context(api, repository, event):
     run = trusted_run(api, repository, number(os.environ["GITHUB_RUN_ID"]), CI_WORKFLOW, events={"workflow_dispatch"})
     if "head_sha" in source_filter(pr):
         require(run["head_sha"] == pr["base"]["sha"], "ci_source_base_changed")
-    require(run.get("display_title") == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]), "ci_title_invalid")
+    require(canonical_run_title(run.get("display_title")) == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]), "ci_title_invalid")
     require(pr.get("merge_commit_sha"), "pr_merge_not_ready", "GitHub must compute the proposed merge before CI can start.")
     merge_sha = sha(pr["merge_commit_sha"])
     merge = api.request("GET", f"/repos/{repository}/commits/{merge_sha}")
@@ -341,7 +341,7 @@ def ci_aggregate(api, repository, binding):
     pr = live_pr(api, repository, binding["pr_number"])
     require(pr["base"]["sha"] == binding["base_sha"] and pr["head"]["sha"] == binding["head_sha"], "ci_commits_changed")
     run = trusted_run(api, repository, number(os.environ["GITHUB_RUN_ID"]), CI_WORKFLOW, events={"workflow_dispatch"})
-    require(run.get("display_title") == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]), "ci_title_invalid")
+    require(canonical_run_title(run.get("display_title")) == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]), "ci_title_invalid")
     jobs = run_jobs(api, repository, run)
     expected = [{"id": name, "applicable": True} for name in ("WMIE plan", "WMIE content", "WMIE security")]
     expected += [{"id": "WMIE / " + c["id"], "applicable": True} for c in binding["plan"]["components"] if c.get("checks")]

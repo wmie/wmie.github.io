@@ -32,7 +32,7 @@ def trusted_setup():
 
 
 def reconciliation_job(needs):
-    return {"name": "WMIE reconciliation", "needs": needs,
+    return {"name": "Refresh pull request status", "needs": needs,
             "if": "always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))",
             "runs-on": "ubuntu-latest", "timeout-minutes": 3, "permissions": {"actions": "write"},
             "steps": [{"name": "Request final governance assessment", "env": {
@@ -76,38 +76,38 @@ def ci_workflow():
          "run": "python3 wmie-control/.github/wmie/control.py ci-component --source wmie-source"},
     ]
     jobs = {
-        "plan": {"name": "WMIE plan", "runs-on": "ubuntu-latest", "timeout-minutes": 10, "permissions": permissions,
+        "plan": {"name": "Prepare checks", "runs-on": "ubuntu-latest", "timeout-minutes": 10, "permissions": permissions,
                  "outputs": {"matrix": "${{ steps.plan.outputs.matrix }}", "has_components": "${{ steps.plan.outputs.has_components }}",
                              "merge_sha": "${{ steps.context.outputs.merge_sha }}", "binding_id": "${{ steps.binding.outputs.artifact-id }}"}, "steps": planner},
-        "project": {"name": "WMIE / ${{ matrix.component.id }}", "needs": ["plan"], "if": "needs.plan.outputs.has_components == 'true'",
+        "project": {"name": "Project checks / ${{ matrix.component.id }}", "needs": ["plan"], "if": "needs.plan.outputs.has_components == 'true'",
                     "runs-on": "ubuntu-latest", "timeout-minutes": 30, "permissions": {"contents": "read"},
                     "strategy": {"fail-fast": False, "matrix": "${{ fromJSON(needs.plan.outputs.matrix) }}"}, "steps": component_steps},
     }
     for kind in ("content", "security"):
-        jobs[kind] = {"name": "WMIE " + kind, "needs": ["plan"], "runs-on": "ubuntu-latest", "timeout-minutes": 15,
+        jobs[kind] = {"name": {"content": "JSON validation", "security": "Secret scan (Gitleaks)"}[kind], "needs": ["plan"], "runs-on": "ubuntu-latest", "timeout-minutes": 15,
                       "permissions": {"contents": "read"}, "steps": trusted_setup() + [checkout_source, load_binding,
                       {"name": "Inspect " + kind, "run": "python3 wmie-control/.github/wmie/baseline.py " + kind + " --source wmie-source --binding wmie-ci-binding.json"}]}
-    jobs["aggregate"] = {"name": "WMIE CI", "needs": ["plan", "project", "content", "security"], "if": "always()",
+    jobs["aggregate"] = {"name": "Required checks", "needs": ["plan", "project", "content", "security"], "if": "always()",
                          "runs-on": "ubuntu-latest", "timeout-minutes": 20, "permissions": permissions,
                          "steps": trusted_setup() + [load_binding, {"name": "Require actual CI success", "env": context_env,
                          "run": "python3 wmie-control/.github/wmie/control.py ci-aggregate --binding wmie-ci-binding.json"}]}
     jobs["reconcile"] = reconciliation_job(["aggregate"])
-    return {"name": "WMIE CI", "run-name": "WMIE CI pr=${{ inputs.pr_number }} base=${{ inputs.base_sha }} head=${{ inputs.head_sha }}",
+    return {"name": "Pull request checks", "run-name": "Pull request checks pr=${{ inputs.pr_number }} base=${{ inputs.base_sha }} head=${{ inputs.head_sha }}",
             "on": {"workflow_dispatch": {"inputs": {key: {"required": True, "type": "string"} for key in ("pr_number", "base_sha", "head_sha")}}},
             "permissions": {}, "concurrency": {"group": "wmie-ci-pr-${{ inputs.pr_number }}", "cancel-in-progress": False, "queue": "max"}, "jobs": jobs}
 
 
 def governance_workflow(default_branch, external_workflows=()):
-    names = sorted(set(["WMIE CI", "WMIE Review", "WMIE review events", *external_workflows]))
+    names = sorted(set(["Pull request checks", "AI code review", "Pull request events", "WMIE CI", "WMIE Review", "WMIE review events", *external_workflows]))
     steps = trusted_setup() + [
-        {"name": "Mint the WMIE check token", "id": "app", "uses": PINS["app"], "with": {
+        {"name": "Authorize status updates", "id": "app", "uses": PINS["app"], "with": {
             "client-id": "${{ secrets.WMIE_REVIEW_CLIENT_ID }}", "private-key": "${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}",
             "owner": "${{ github.repository_owner }}", "repositories": "${{ github.event.repository.name }}", "permission-checks": "write"}},
         {"name": "Assess the current PR", "env": {"GH_TOKEN": "${{ github.token }}", "WMIE_APP_TOKEN": "${{ steps.app.outputs.token }}",
             "WMIE_AUTOMERGE_ENABLED": "${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}"},
          "run": "python3 wmie-control/.github/wmie/governance.py"},
     ]
-    return {"name": "WMIE governance", "on": {
+    return {"name": "Coordinate pull request checks", "on": {
         "workflow_run": {"workflows": names, "types": ["completed"]},
         "push": {"branches": [default_branch]},
         "repository_dispatch": {"types": ["wmie-reconcile"]},
@@ -120,7 +120,7 @@ def governance_workflow(default_branch, external_workflows=()):
 
 
 def review_events_workflow(default_branch="main"):
-    return {"name": "WMIE review events", "on": {
+    return {"name": "Pull request events", "on": {
             "push": {"branches-ignore": [default_branch]},
             "pull_request": {"types": ["opened", "synchronize", "reopened", "ready_for_review", "edited"]},
             "pull_request_review": {"types": ["submitted", "edited", "dismissed"]}},
@@ -145,7 +145,7 @@ def merge_workflow():
             "name": "wmie-merge-${{ github.run_id }}", "path": "wmie-merge-result.json",
             "if-no-files-found": "ignore", "retention-days": 30}},
     ]
-    return {"name": "WMIE merge", "run-name": "WMIE merge pr=${{ inputs.pr_number }} head=${{ inputs.expected_head }}", "on": {"workflow_dispatch": {"inputs": {
+    return {"name": "Merge approved pull request", "run-name": "Merge approved pull request pr=${{ inputs.pr_number }} head=${{ inputs.expected_head }}", "on": {"workflow_dispatch": {"inputs": {
                 "pr_number": {"required": True, "type": "string"},
                 "expected_head": {"required": True, "type": "string"}}}},
             "permissions": {}, "concurrency": {"group": "wmie-merge-${{ github.repository }}",
