@@ -1,7 +1,7 @@
-## WMIE review and merge
+## Pull request review and merge
 
 GitHub Agentic Workflows runs the review locally in this repository.
-WMIE Agent provides the required PR approval and publishes `WMIE CI` and `WMIE approval`.
+WMIE Agent provides the required PR approval and publishes `Required checks` and `Code review approval`.
 A complete positive review and successful applicable CI allow the bot to merge automatically.
 Findings, incomplete analysis, technical errors, stale commits, and missing required checks keep the merge blocked.
 Push corrections to the same branch and let the checks and review run again.

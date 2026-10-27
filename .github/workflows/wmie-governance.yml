@@ -1,7 +1,10 @@
-name: WMIE governance
+name: Coordinate pull request checks
 'on':
   workflow_run:
     workflows:
+    - AI code review
+    - Pull request checks
+    - Pull request events
     - WMIE CI
     - WMIE Review
     - WMIE review events
@@ -49,7 +52,7 @@ jobs:
         python-version: '3.12'
     - name: Install the configuration parser
       run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt'
-    - name: Mint the WMIE check token
+    - name: Authorize status updates
       id: app
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
       with:

@@ -3,10 +3,40 @@
 from __future__ import annotations
 
 import copy
+import json
 from pathlib import Path
 import re
+import tempfile
 
 from core import GovernanceError, require
+
+
+def label_review_jobs(path):
+    path = Path(path)
+    before = yaml_data(path)
+    names = {"agent": "Analyze code changes", "detection": "Check review output safety",
+             "safe_outputs": "Publish review", "conclusion": "Review result"}
+    text = path.read_text()
+    expected = copy.deepcopy(before)
+    for key, label in names.items():
+        require(key in before["jobs"], "review_job_missing", key)
+        pattern = r"(?ms)(^  " + re.escape(key) + r":\n(?:(?!^  [a-zA-Z_]).)*?^    name: )[^\n]+"
+        text, count = re.subn(pattern, lambda match: match[1] + label, text)
+        require(count == 1, "review_job_label_ambiguous", key)
+        expected["jobs"][key]["name"] = label
+    environment = expected["jobs"]["conclusion"].get("env", {})
+    if "GH_AW_JOB_DISPLAY_NAMES" in environment:
+        display_names = json.loads(environment["GH_AW_JOB_DISPLAY_NAMES"])
+        display_names.update(names)
+        environment["GH_AW_JOB_DISPLAY_NAMES"] = json.dumps(display_names, separators=(",", ":"))
+        text, count = re.subn(r"(?m)(^      GH_AW_JOB_DISPLAY_NAMES: )[^\n]+",
+                             lambda match: match[1] + json.dumps(environment["GH_AW_JOB_DISPLAY_NAMES"]), text)
+        require(count == 1, "review_summary_labels_ambiguous")
+    with tempfile.TemporaryDirectory() as temporary:
+        candidate = Path(temporary) / "review.yml"
+        candidate.write_text(text)
+        require(yaml_data(candidate) == expected, "review_label_changed_behavior")
+    path.write_text(text)
 
 
 def yaml_data(path):
@@ -32,3 +62,7 @@ def yaml_data(path):
         return data
     except (OSError, UnicodeError, ValueError, yaml.YAMLError) as error:
         raise GovernanceError("invalid_yaml", str(path)) from error
+
+
+if __name__ == "__main__":
+    label_review_jobs(".github/workflows/wmie-review.lock.yml")

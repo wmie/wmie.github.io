@@ -1,6 +1,6 @@
 ---
-name: WMIE Review
-run-name: WMIE Review pr=${{ inputs.pr_number }} base=${{ inputs.base_sha || 'current' }} head=${{ inputs.head_sha || 'current' }}
+name: AI code review
+run-name: AI code review pr=${{ inputs.pr_number }} base=${{ inputs.base_sha || 'current' }} head=${{ inputs.head_sha || 'current' }}
 on:
   workflow_dispatch:
     inputs:
@@ -64,7 +64,7 @@ tools:
   bash: true
 jobs:
   prepare:
-    name: WMIE review input
+    name: Prepare review
     environment: wmie-review
     if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
     runs-on: ubuntu-latest
@@ -128,7 +128,7 @@ jobs:
           if-no-files-found: error
           retention-days: 7
   reconcile:
-    name: WMIE reconciliation
+    name: Refresh pull request status
     needs: [prepare, agent, detection, safe_outputs]
     detection-gate: status-only
     if: always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
@@ -146,8 +146,15 @@ jobs:
           WMIE_SOURCE_RUN: ${{ github.run_id }}
         run: gh workflow run wmie-governance.yml --ref "$WMIE_DEFAULT_BRANCH" -f pr_number="$WMIE_PR_NUMBER" -f source_run_id="$WMIE_SOURCE_RUN"
   agent:
+    name: Analyze code changes
     needs: [prepare]
     if: needs.prepare.result == 'success' && needs.prepare.outputs.ready == 'true'
+  detection:
+    name: Check review output safety
+  safe_outputs:
+    name: Publish review
+  conclusion:
+    name: Review result
 checkout:
   ref: ${{ github.workflow_sha }}
 steps:
@@ -223,7 +230,7 @@ safe-outputs:
         python-version: "3.12"
     - name: Install the configuration parser
       run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r .github/wmie/requirements.txt'
-    - name: WMIE preflight
+    - name: Validate review before publishing
       env:
         GH_TOKEN: ${{ steps.wmie-preflight-token.outputs.token }}
         GH_AW_AGENT_OUTPUT: ${{ steps.setup-agent-output-env.outputs.GH_AW_AGENT_OUTPUT }}

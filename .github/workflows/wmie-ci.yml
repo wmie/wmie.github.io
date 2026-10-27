@@ -1,5 +1,5 @@
-name: WMIE CI
-run-name: WMIE CI pr=${{ inputs.pr_number }} base=${{ inputs.base_sha }} head=${{ inputs.head_sha }}
+name: Pull request checks
+run-name: Pull request checks pr=${{ inputs.pr_number }} base=${{ inputs.base_sha }} head=${{ inputs.head_sha }}
 'on':
   workflow_dispatch:
     inputs:
@@ -19,7 +19,7 @@ concurrency:
   queue: max
 jobs:
   plan:
-    name: WMIE plan
+    name: Prepare checks
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:
@@ -68,7 +68,7 @@ jobs:
         if-no-files-found: error
         retention-days: 30
   project:
-    name: WMIE / ${{ matrix.component.id }}
+    name: Project checks / ${{ matrix.component.id }}
     needs:
     - plan
     if: needs.plan.outputs.has_components == 'true'
@@ -144,7 +144,7 @@ jobs:
         CI: 'true'
       run: python3 wmie-control/.github/wmie/control.py ci-component --source wmie-source
   content:
-    name: WMIE content
+    name: JSON validation
     needs:
     - plan
     runs-on: ubuntu-latest
@@ -176,7 +176,7 @@ jobs:
     - name: Inspect content
       run: python3 wmie-control/.github/wmie/baseline.py content --source wmie-source --binding wmie-ci-binding.json
   security:
-    name: WMIE security
+    name: Secret scan (Gitleaks)
     needs:
     - plan
     runs-on: ubuntu-latest
@@ -208,7 +208,7 @@ jobs:
     - name: Inspect security
       run: python3 wmie-control/.github/wmie/baseline.py security --source wmie-source --binding wmie-ci-binding.json
   aggregate:
-    name: WMIE CI
+    name: Required checks
     needs:
     - plan
     - project
@@ -242,7 +242,7 @@ jobs:
         GH_TOKEN: ${{ github.token }}
       run: python3 wmie-control/.github/wmie/control.py ci-aggregate --binding wmie-ci-binding.json
   reconcile:
-    name: WMIE reconciliation
+    name: Refresh pull request status
     needs:
     - aggregate
     if: always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))

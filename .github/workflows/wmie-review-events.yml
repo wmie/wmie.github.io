@@ -1,4 +1,4 @@
-name: WMIE review events
+name: Pull request events
 'on':
   push:
     branches-ignore:
