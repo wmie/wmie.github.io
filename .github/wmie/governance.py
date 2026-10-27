@@ -14,6 +14,7 @@ from core import GitHub, GovernanceError, read_json, require
 from diagnostics import native_error_diagnostic
 from evidence import canonical_run_title, REVIEW_WORKFLOW, native_review_evidence, run_jobs, trusted_run, validate_input_record
 from review import APP_ID, BOT_ID, review_data, validate_published
+from presentation import check_summary, review_reference
 
 
 def published_approval(api, repository, pr, ci):
@@ -25,10 +26,14 @@ def published_approval(api, repository, pr, ci):
     # A later incomplete, dismissed, or blocking review cannot reuse an older approval.
     review = api.request("GET", f"/repos/{repository}/pulls/{pr['number']}/reviews/{number(latest['id'])}")
     try:
-        record = review_data(review.get("body"))
+        reference = review_reference(review.get("body"), repository)
+        record = reference or review_data(review.get("body"))
     except GovernanceError as error:
         raise GovernanceError("wmie_review_missing", "The previous bot review does not contain a native WMIE record.") from error
-    require(record.get("base_sha") == pr["base"]["sha"] and record.get("head_sha") == pr["head"]["sha"], "published_review_stale")
+    require(record.get("head_sha") == pr["head"]["sha"] and (reference or record.get("base_sha") == pr["base"]["sha"]), "published_review_stale")
+    if reference:
+        require(review.get("state") != "CHANGES_REQUESTED", "application_findings", f"Read code review {review['id']}.")
+        require(review.get("state") != "COMMENTED", "analysis_incomplete", f"Read code review {review['id']}.")
     require(record.get("verdict") != "changes_requested", "application_findings", f"Read WMIE review {review['id']}.")
     require(record.get("verdict") != "incomplete", "analysis_incomplete", f"Read WMIE review {review['id']}.")
     run = trusted_run(api, repository, number(record.get("review_run_id")), REVIEW_WORKFLOW,
@@ -74,7 +79,7 @@ def set_check(api, repository, pr, name, *, success, details, read_api=None):
                            "analysis_incomplete": "Code review incomplete",
                            "reviewer_technical_error": "Code review process failed",
                        }.get(details.get("code"), "Required checks incomplete" if details.get("state") == "ci_incomplete" else "Code review incomplete"),
-                       "summary": json.dumps(details, sort_keys=True, ensure_ascii=False)}}
+                       "summary": check_summary(repository, pr, name, success, details)}}
     if not pending:
         body["conclusion"] = "success" if success else "failure"
     # Start a new run rather than carry a completed conclusion into pending work.

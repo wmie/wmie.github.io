@@ -164,6 +164,7 @@ steps:
       name: ${{ needs.prepare.outputs.source_name }}
       path: review-input
 safe-outputs:
+  footer: false
   environment: wmie-review
   needs: [prepare]
   runs-on: ubuntu-latest
@@ -182,7 +183,12 @@ safe-outputs:
     private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
   submit-pull-request-review:
     max: 1
+    footer: false
     allowed-events: [APPROVE, REQUEST_CHANGES, COMMENT]
+    target: ${{ needs.prepare.outputs.pr_number }}
+    commit-id: ${{ needs.prepare.outputs.head_sha }}
+  create-pull-request-review-comment:
+    max: 10
     target: ${{ needs.prepare.outputs.pr_number }}
     commit-id: ${{ needs.prepare.outputs.head_sha }}
   threat-detection:
@@ -266,7 +272,12 @@ Do not request changes for style preferences, speculative problems, change size 
 If necessary context is missing or analysis stops early, report an incomplete review.
 
 Submit exactly one native review for the specified pull request.
-The body must contain a concise human summary and exactly one fenced `json` object.
+The internal body must contain exactly one fenced `json` object.
+The trusted publisher renders the public English review and inline comments from this record.
+Do not call the inline-comment tool. Do not include presentation markup in record fields.
+Write a concise English summary. Explain each finding with concrete evidence, its impact, and an actionable fix.
+Review the code, not the author. Report blocking defects rather than style preferences or speculative concerns.
+Never claim that you ran tests. This review performs static code analysis.
 Copy `repository`, `pr_number`, `base_sha`, `head_sha`, and `manifest_sha256` from the binding.
 Copy `review_run_id` and `review_run_attempt` from the binding provenance fields `run_id` and `run_attempt`.
 Set `schema_version` to 1 and provide `complete`, `verdict`, `reviewed_files`, `summary`, and `findings`.
