@@ -17,6 +17,7 @@
     ".github/wmie/governance.py": "857ade404ee72bcbb13d2a6b7b73a8fe9b85c33b0390de05a34442fcda40bc61",
     ".github/wmie/merge.py": "5821ba97f0053fb44595b4b23429e30c95989cb04d4d29c687364e67962e6666",
     ".github/wmie/presentation.py": "3075054131fb4986890a0828c14748b008dcd5596175e2163a0c2f42683f3f88",
+    ".github/wmie/provider_ready.py": "0d35655f19b129a6328873d514e6a3d5123bc16e53e7d8fdbdbe25580c60c903",
     ".github/wmie/requirements.txt": "0969da99a0bc2a1b71ed50584560f4588a37567ac63af3ddbaf3c4617ca5621a",
     ".github/wmie/review.py": "04bf4efc6aafe9384ab7447c391744a3c161eece7c4b55d321fd0b391e63fa5a",
     ".github/wmie/tool-versions.json": "8da08c99f900add5e138511b977990a1cb692a07e34c99e19803cee1b5ff9f9f",
@@ -29,6 +30,6 @@
     ".github/workflows/wmie-review.md": "84a26683183c5acb1ac270d5176eb3ebc418b740f967fd82dac0123122c7f38a"
   },
   "schema_version": 1,
-  "source_commit": "51f5089088dbdd15253bb315ecd890357864ccbb",
+  "source_commit": "2695edd188d29004e10407f75831e2843d4f4aae",
   "source_repository": "wmie/.github"
 }
