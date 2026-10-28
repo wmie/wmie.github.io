@@ -98,12 +98,17 @@ def ci_workflow():
 
 
 def governance_workflow(default_branch, external_workflows=()):
-    names = sorted(set(["Pull request checks", "AI code review", "Pull request events", "WMIE CI", "WMIE Review", "WMIE review events", *external_workflows]))
+    names = sorted(set(["Pull request events", "WMIE review events", *external_workflows]))
     steps = trusted_setup() + [
+        {"name": "Read central release evidence", "id": "release", "uses": PINS["app"], "with": {
+            "client-id": "${{ secrets.WMIE_REVIEW_CLIENT_ID }}", "private-key": "${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}",
+            "owner": "${{ github.repository_owner }}", "repositories": "${{ github.repository == 'wmie/.github' && '.github' || format('{0},.github', github.event.repository.name) }}",
+            "permission-contents": "read", "permission-pull-requests": "read", "permission-actions": "read", "permission-checks": "read"}},
         {"name": "Authorize status updates", "id": "app", "uses": PINS["app"], "with": {
             "client-id": "${{ secrets.WMIE_REVIEW_CLIENT_ID }}", "private-key": "${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}",
-            "owner": "${{ github.repository_owner }}", "repositories": "${{ github.event.repository.name }}", "permission-checks": "write"}},
+            "owner": "${{ github.repository_owner }}", "repositories": "${{ github.event.repository.name }}", "permission-checks": "write", "permission-pull-requests": "write"}},
         {"name": "Assess the current PR", "env": {"GH_TOKEN": "${{ github.token }}", "WMIE_APP_TOKEN": "${{ steps.app.outputs.token }}",
+            "WMIE_RELEASE_READ_TOKEN": "${{ steps.release.outputs.token }}",
             "WMIE_AUTOMERGE_ENABLED": "${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}"},
          "run": "python3 wmie-control/.github/wmie/governance.py"},
     ]
@@ -130,6 +135,11 @@ def review_events_workflow(default_branch="main"):
 
 def merge_workflow():
     steps = trusted_setup() + [
+        {"name": "Read central release evidence", "id": "release", "uses": PINS["app"], "with": {
+            "client-id": "${{ secrets.WMIE_REVIEW_CLIENT_ID }}", "private-key": "${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}",
+            "owner": "${{ github.repository_owner }}", "repositories": "${{ github.repository == 'wmie/.github' && '.github' || format('{0},.github', github.event.repository.name) }}",
+            "permission-contents": "read", "permission-pull-requests": "read", "permission-actions": "read", "permission-checks": "read"}},
+
         {"name": "Mint the constrained merger token", "id": "app", "uses": PINS["app"], "with": {
             "client-id": "${{ secrets.WMIE_REVIEW_CLIENT_ID }}",
             "private-key": "${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}",
@@ -139,6 +149,7 @@ def merge_workflow():
         {"name": "Require the actual approval before merge", "env": {
             "GH_TOKEN": "${{ steps.app.outputs.token }}", "WMIE_PR_NUMBER": "${{ inputs.pr_number }}",
             "WMIE_EXPECTED_HEAD": "${{ inputs.expected_head }}",
+            "WMIE_RELEASE_READ_TOKEN": "${{ steps.release.outputs.token }}",
             "WMIE_AUTOMERGE_ENABLED": "${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}"},
          "run": "python3 wmie-control/.github/wmie/merge.py"},
         {"name": "Preserve the merge result", "if": "always()", "uses": PINS["upload"], "with": {

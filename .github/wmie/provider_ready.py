@@ -2,6 +2,7 @@
 import json
 import os
 import urllib.request
+from core import NoRedirect
 
 
 def main():
@@ -9,7 +10,7 @@ def main():
     if not key:
         raise SystemExit('The dedicated OpenRouter secret is missing. No AI analysis started.')
     request = urllib.request.Request('https://openrouter.ai/api/v1/key', headers={'Authorization': 'Bearer '+key})
-    with urllib.request.urlopen(request, timeout=20) as response:
+    with urllib.request.build_opener(NoRedirect()).open(request, timeout=20) as response:
         data = json.load(response)['data']
     if data.get('limit') != 50 or data.get('limit_reset') != 'monthly':
         raise SystemExit('The dedicated key must use a 50 USD monthly limit. No AI analysis started.')
