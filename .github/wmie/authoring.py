@@ -64,5 +64,71 @@ def yaml_data(path):
         raise GovernanceError("invalid_yaml", str(path)) from error
 
 
+def wire_review_publication(path):
+    path = Path(path)
+    before = yaml_data(path)
+    steps = before["jobs"]["safe_outputs"]["steps"]
+    additions = [
+        {"name": "Verify published review", "id": "wmie-verify-publication",
+         "env": {"GH_TOKEN": "${{ steps.wmie-preflight-token.outputs.token }}"},
+         "run": "python3 .github/wmie/control.py review-publication"},
+        {"name": "Preserve published review evidence",
+         "uses": "actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f",
+         "with": {"name": "review-publication", "path": "/tmp/wmie-review-presentation/publication.json",
+                  "if-no-files-found": "error"}}]
+    positions = [i for i, step in enumerate(steps) if step.get("id") == "process_safe_outputs"]
+    require(len(positions) == 1, "publication_step_ambiguous")
+    index = positions[0] + 1
+    if steps[index:index + 2] == additions:
+        return
+    require(not any(step.get("id") == "wmie-verify-publication" for step in steps), "publication_step_ambiguous")
+    expected = copy.deepcopy(before)
+    expected["jobs"]["safe_outputs"]["steps"][index:index] = additions
+    insertion = '''      - name: Verify published review
+        id: wmie-verify-publication
+        env:
+          GH_TOKEN: ${{ steps.wmie-preflight-token.outputs.token }}
+        run: python3 .github/wmie/control.py review-publication
+      - name: Preserve published review evidence
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: review-publication
+          path: /tmp/wmie-review-presentation/publication.json
+          if-no-files-found: error
+'''
+    anchor = "      - name: Upload Safe Outputs Items\n"
+    value = path.read_text()
+    require(value.count(anchor) == 1, "publication_upload_ambiguous")
+    value = value.replace(anchor, insertion + anchor)
+    with tempfile.TemporaryDirectory() as temporary:
+        candidate = Path(temporary) / "review.yml"
+        candidate.write_text(value)
+        require(yaml_data(candidate) == expected, "publication_changed_other_behavior")
+    path.write_text(value)
+
+
+def bind_inference_environment(path):
+    path = Path(path)
+    before = yaml_data(path)
+    expected = copy.deepcopy(before)
+    text = path.read_text()
+    for name in ('agent', 'detection'):
+        actual = before['jobs'][name].get('environment')
+        require(actual in {None, 'wmie-review'}, 'inference_environment_conflict', name)
+        expected['jobs'][name]['environment'] = 'wmie-review'
+        if actual is None:
+            anchor = '  ' + name + ':\n'
+            require(text.count(anchor) == 1, 'inference_job_ambiguous', name)
+            text = text.replace(anchor, anchor + '    environment: wmie-review\n', 1)
+    with tempfile.TemporaryDirectory() as directory:
+        candidate = Path(directory) / 'review.yml'
+        candidate.write_text(text)
+        require(yaml_data(candidate) == expected, 'inference_environment_changed_behavior')
+    path.write_text(text)
+
+
 if __name__ == "__main__":
     label_review_jobs(".github/workflows/wmie-review.lock.yml")
+    wire_review_publication(".github/workflows/wmie-review.lock.yml")
+
+    bind_inference_environment(".github/workflows/wmie-review.lock.yml")

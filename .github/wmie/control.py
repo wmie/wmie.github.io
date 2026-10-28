@@ -14,9 +14,10 @@ from urllib.parse import urlencode
 
 from ci import discover, plan, validate_profile
 from core import GitHub, GovernanceError, digest, output, read_json, require, safe_path, sha, write_json
-from evidence import canonical_run_title, CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, run_jobs, trusted_run, validate_ci_run, validate_input_record
+from evidence import canonical_run_title, CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, published_comments, run_jobs, trusted_run, validate_ci_run, validate_input_record
 from git_input import discovery_tree, fetch, git, snapshot
-from review import validate_ci, validate_manifest, validate_native_output
+from review import BOT_ID, validate_ci, validate_manifest, validate_native_output
+from presentation import PLAN_PATH, RECORD_PATH, render, text_hash, without_framework_marker
 
 
 def repository_name(value):
@@ -234,7 +235,7 @@ def review_prepare(api, repository, event):
         return {"state": "analysis_already_admitted", "previous_run_id": previous,
                 "action": "Read the previous result. Use an explicit manual review to authorize another analysis."}
     origin = {"run_id": run["id"], "run_attempt": run["run_attempt"], "workflow_sha": sha(os.environ["WMIE_WORKFLOW_SHA"]),
-              "workflow_path": REVIEW_WORKFLOW}
+              "workflow_path": REVIEW_WORKFLOW, "presentation_version": 1}
     require(origin["workflow_sha"] == run["head_sha"], "workflow_source_mismatch")
     destination = Path("wmie-input")
     require(not destination.exists(), "review_input_directory_exists")
@@ -270,13 +271,84 @@ def review_preflight(api, repository):
     jobs = run_jobs(api, repository, run)
     for name in ("agent", "detection", "WMIE review input"):
         require(jobs.get(name, {}).get("conclusion") == "success", "review_job_incomplete", name)
-    record = validate_native_output(read_json(os.environ["GH_AW_AGENT_OUTPUT"]), binding["manifest"])
+    envelope = read_json(os.environ["GH_AW_AGENT_OUTPUT"])
+    record = validate_native_output(envelope, binding["manifest"])
+    require(all(item.get("type") in {"submit_pull_request_review", "noop"} for item in envelope["items"]),
+            "model_authored_inline_comments")
     evidence = ci_evidence(api, repository, pr)
     require(evidence["profile_sha256"] == binding["ci"]["profile_sha256"] and evidence["plan_sha256"] == binding["ci"]["plan_sha256"],
             "ci_plan_changed")
     fresh = live_pr(api, repository, pr["number"])
     validate_manifest(binding["manifest"], repository, pr["number"], fresh["base"]["sha"], fresh["head"]["sha"])
+    files = api.pages(f"/repos/{repository}/pulls/{pr['number']}/files") if record["findings"] else []
+    presentation = render(record, binding["manifest"], binding["ci"], files)
+    write_json(PLAN_PATH, presentation)
+    proposal = next(item for item in envelope["items"] if item.get("type") == "submit_pull_request_review")
+    envelope["items"] = presentation["comments"] + [{**proposal, "body": presentation["body"]}]
+    write_json(os.environ["GH_AW_AGENT_OUTPUT"], envelope)
     return {"state": "accepted", "verdict": record["verdict"], "pr_number": pr["number"], "head_sha": pr["head"]["sha"]}
+
+
+def native_publication_text(values):
+    module = Path(os.environ.get("RUNNER_TEMP", "")) / "gh-aw/actions/sanitize_content_core.cjs"
+    require(module.is_file(), "native_publication_normalizer_missing")
+    script = ("const fs = require('node:fs'); "
+              "const { canonicalizePublicationText } = require(process.argv[1]); "
+              "const values = JSON.parse(fs.readFileSync(0, 'utf8')); "
+              "process.stdout.write(JSON.stringify(values.map(value => "
+              "canonicalizePublicationText(value, {preserveImageAttributes: true}))));")
+    result = subprocess.run(["node", "-e", script, str(module.resolve())], input=json.dumps(values),
+                            capture_output=True, text=True, timeout=30)
+    require(result.returncode == 0, "native_publication_normalization_failed")
+    normalized = json.loads(result.stdout)
+    require(isinstance(normalized, list) and len(normalized) == len(values)
+            and all(isinstance(value, str) for value in normalized), "native_publication_normalization_failed")
+    return normalized
+
+
+def review_publication(api, repository, *, items_path="/tmp/gh-aw/safe-output-items.jsonl"):
+    presentation = read_json(PLAN_PATH)
+    record = presentation["record"]
+    require(record["repository"] == repository and record["review_run_id"] == number(os.environ["GITHUB_RUN_ID"]),
+            "publication_run_mismatch")
+    require(record["review_run_attempt"] == number(os.environ["GITHUB_RUN_ATTEMPT"]), "publication_attempt_mismatch")
+    pr_number = number(record["pr_number"])
+    pr = live_pr(api, repository, pr_number)
+    require(pr["head"]["sha"] == record["head_sha"] and pr["base"]["sha"] == record["base_sha"], "publication_commits_changed")
+    items = [json.loads(line) for line in Path(items_path).read_text().splitlines() if line.strip()]
+    reviews = [item for item in items if item.get("type") == "submit_pull_request_review"]
+    require(len(reviews) == 1, "native_publication_ambiguous")
+    item = reviews[0]
+    require(item.get("repo") == repository and item.get("number") == pr_number, "native_publication_target_mismatch")
+    review_id = number(item.get("id"))
+    require(item.get("metadata", {}).get("review_id") == review_id, "native_publication_review_mismatch")
+    review = api.request("GET", f"/repos/{repository}/pulls/{pr_number}/reviews/{review_id}")
+    require(review.get("user", {}).get("id") == BOT_ID and review["user"].get("type") == "Bot", "wrong_reviewer")
+    require(review.get("commit_id") == record["head_sha"], "published_commit_mismatch")
+    state = {"approve": "APPROVED", "changes_requested": "CHANGES_REQUESTED", "incomplete": "COMMENTED"}[record["verdict"]]
+    require(review.get("state") == state, "published_state_mismatch")
+    require(item.get("metadata", {}).get("review_state") == state, "native_publication_state_mismatch")
+    normalized = native_publication_text([presentation["body"]] + [c["body"] for c in presentation["comments"]])
+    require(without_framework_marker(review.get("body", ""), repository) == normalized[0], "published_body_mismatch")
+    comments = published_comments(api, repository, pr_number, review_id)
+    expected = [{**comment, "body": body} for comment, body in zip(presentation["comments"], normalized[1:])]
+    require(len(comments) == len(expected), "published_comments_mismatch")
+    remaining = list(comments)
+    for planned in expected:
+        matches = [c for c in remaining if all(c.get(key) == planned[key] for key in ("path", "line", "side", "body"))]
+        require(len(matches) == 1, "published_comments_mismatch")
+        actual = matches[0]
+        require(actual.get("user", {}).get("id") == BOT_ID and actual.get("commit_id") == record["head_sha"]
+                and actual.get("pull_request_review_id") == review_id, "published_comment_binding_mismatch")
+        remaining.remove(actual)
+    publication = {"schema_version": 1, "repository": repository, "pr_number": pr_number,
+                   "run_id": record["review_run_id"], "run_attempt": record["review_run_attempt"],
+                   "head_sha": record["head_sha"], "review_id": review_id, "record_sha256": digest(record),
+                   "body_sha256": text_hash(review["body"]),
+                   "comments": [{**{key: c[key] for key in ("id", "path", "line", "side")},
+                                 "body_sha256": text_hash(c["body"])} for c in comments]}
+    write_json(RECORD_PATH, publication)
+    return {"state": "publication_verified", "review_id": review_id, "inline_comments": len(comments)}
 
 
 def ci_context(api, repository, event):
@@ -354,7 +426,7 @@ def ci_aggregate(api, repository, binding):
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("command", choices=("review-prepare", "review-preflight", "ci-context", "ci-plan", "ci-component", "ci-aggregate"))
+    parser.add_argument("command", choices=("review-prepare", "review-preflight", "review-publication", "ci-context", "ci-plan", "ci-component", "ci-aggregate"))
     parser.add_argument("--source", default="wmie-source")
     parser.add_argument("--binding", default="wmie-ci-binding.json")
     args = parser.parse_args()
@@ -367,6 +439,8 @@ def main():
             result = review_prepare(api, repository, event)
         elif args.command == "review-preflight":
             result = review_preflight(api, repository)
+        elif args.command == "review-publication":
+            result = review_publication(api, repository)
         elif args.command == "ci-context":
             result = ci_context(api, repository, event)
         elif args.command == "ci-plan":

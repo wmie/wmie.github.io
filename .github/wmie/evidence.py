@@ -8,6 +8,7 @@ from urllib.parse import quote
 
 from core import archive_json, digest, require, sha
 from review import validate_ci, validate_manifest, validate_native_output
+from presentation import ARTIFACT, review_reference, validate_publication
 
 
 CI_WORKFLOW = ".github/workflows/wmie-ci.yml"
@@ -22,7 +23,7 @@ def canonical_run_title(title):
 
 
 def canonical_job_name(name):
-    aliases = {"Prepare checks": "WMIE plan", "JSON validation": "WMIE content",
+    aliases = {"Prepare review": "WMIE review input", "Prepare checks": "WMIE plan", "JSON validation": "WMIE content",
                "Secret scan (Gitleaks)": "WMIE security", "Required checks": "WMIE CI",
                "Analyze code changes": "agent", "Check review output safety": "detection",
                "Publish review": "safe_outputs", "Review result": "conclusion"}
@@ -82,6 +83,20 @@ def artifact_record(api, repository, run, name, member, *, artifact_id=None, exp
     return archive_json(payload, member, json_lines=json_lines)
 
 
+def published_comments(api, repository, pr_number, review_id):
+    entries = api.pages(f"/repos/{repository}/pulls/{pr_number}/reviews/{review_id}/comments")
+    ids = [entry.get("id") for entry in entries]
+    require(all(type(value) is int and value > 0 for value in ids) and len(set(ids)) == len(ids),
+            "published_comment_identifiers_invalid")
+    result = []
+    for comment_id in ids:
+        comment = api.request("GET", f"/repos/{repository}/pulls/comments/{comment_id}")
+        require(comment.get("id") == comment_id and comment.get("pull_request_review_id") == review_id,
+                "published_comment_binding_mismatch")
+        result.append(comment)
+    return result
+
+
 def native_review_evidence(api, repository, run, manifest, review):
     envelope = artifact_record(api, repository, run, "agent-output-fallback", "agent_output.json")
     record = validate_native_output(envelope, manifest)
@@ -94,6 +109,11 @@ def native_review_evidence(api, repository, run, manifest, review):
             "native_publication_review_mismatch")
     require(item.get("metadata", {}).get("review_event") == "APPROVE"
             and item["metadata"].get("review_state") == "APPROVED", "native_publication_not_approval")
+    if manifest.get("provenance", {}).get("presentation_version") == 1:
+        require(review_reference(review.get("body"), repository), "missing_review_reference")
+        publication = artifact_record(api, repository, run, ARTIFACT, "publication.json")
+        comments = published_comments(api, repository, manifest['pr_number'], review['id'])
+        validate_publication(publication, record, review, comments)
     return record
 
 
@@ -116,6 +136,7 @@ def validate_input_record(record, run, pr, *, workflow_sha=None):
     validate_manifest(record.get("manifest", {}), run["repository"]["full_name"], pr["number"],
                       pr["base"]["sha"], pr["head"]["sha"])
     origin = record.get("provenance", {})
+    require(origin.get("presentation_version") in {None, 1}, "input_presentation_version")
     require(origin.get("run_id") == run["id"] and origin.get("run_attempt") == run["run_attempt"],
             "input_run_mismatch")
     require(origin.get("workflow_sha") == (workflow_sha or run["head_sha"]), "input_workflow_sha_mismatch")
