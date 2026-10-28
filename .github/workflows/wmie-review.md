@@ -29,26 +29,37 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
-  copilot-requests: write
 engine:
   id: codex
-  model: copilot/gpt-5.3-codex
+  model: deepseek/deepseek-v4.1-flash-1017
   version: "0.164.0"
   env:
+    OPENAI_BASE_URL: https://openrouter.ai/api/v1
+    OPENAI_API_KEY: ${{ secrets.WMIE_AGENT_OPENROUTER_API_KEY }}
     GH_AW_HARNESS_STARTUP_RETRIES: "0"
   harness:
     max-retries: 0
   config: |
-    model_reasoning_effort = "medium"
+    model_reasoning_effort = "high"
     model_reasoning_summary = "none"
     [features]
     multi_agent = false
     [model_providers."openai-proxy"]
     request_max_retries = 0
     stream_max_retries = 0
+models:
+  providers:
+    openai:
+      models:
+        deepseek/deepseek-v4.1-flash-1017:
+          cost:
+            input: 0.00000030
+            output: 0.00000120
+            cache_read: 0.000000006
+            reasoning: 0.00000120
 max-ai-credits: 150
 max-daily-ai-credits: -1
-timeout-minutes: 15
+timeout-minutes: 30
 concurrency:
   group: wmie-native-review-pr-${{ inputs.pr_number }}
   cancel-in-progress: false
@@ -57,7 +68,7 @@ concurrency:
 features:
   gh-aw-detection: false
 network:
-  allowed: [defaults]
+  allowed: [defaults, openrouter.ai]
 tools:
   github:
     toolsets: [repos]
@@ -103,6 +114,10 @@ jobs:
           permission-pull-requests: read
       - name: Install the configuration parser
         run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r .github/wmie/requirements.txt'
+      - name: Require the dedicated provider budget
+        env:
+          WMIE_AGENT_OPENROUTER_API_KEY: ${{ secrets.WMIE_AGENT_OPENROUTER_API_KEY }}
+        run: python3 .github/wmie/provider_ready.py
       - name: Prepare immutable inputs and CI evidence
         id: context
         env:
@@ -146,10 +161,12 @@ jobs:
           WMIE_SOURCE_RUN: ${{ github.run_id }}
         run: gh workflow run wmie-governance.yml --ref "$WMIE_DEFAULT_BRANCH" -f pr_number="$WMIE_PR_NUMBER" -f source_run_id="$WMIE_SOURCE_RUN"
   agent:
+    environment: wmie-review
     name: Analyze code changes
     needs: [prepare]
     if: needs.prepare.result == 'success' && needs.prepare.outputs.ready == 'true'
   detection:
+    environment: wmie-review
     name: Check review output safety
   safe_outputs:
     name: Publish review
@@ -164,6 +181,7 @@ steps:
       name: ${{ needs.prepare.outputs.source_name }}
       path: review-input
 safe-outputs:
+  footer: false
   environment: wmie-review
   needs: [prepare]
   runs-on: ubuntu-latest
@@ -182,7 +200,12 @@ safe-outputs:
     private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
   submit-pull-request-review:
     max: 1
+    footer: false
     allowed-events: [APPROVE, REQUEST_CHANGES, COMMENT]
+    target: ${{ needs.prepare.outputs.pr_number }}
+    commit-id: ${{ needs.prepare.outputs.head_sha }}
+  create-pull-request-review-comment:
+    max: 10
     target: ${{ needs.prepare.outputs.pr_number }}
     commit-id: ${{ needs.prepare.outputs.head_sha }}
   threat-detection:
@@ -193,14 +216,16 @@ safe-outputs:
     max-ai-credits: 50
     engine:
       id: codex
-      model: copilot/gpt-5.3-codex
+      model: deepseek/deepseek-v4.1-flash-1017
       version: "0.164.0"
       env:
+        OPENAI_BASE_URL: https://openrouter.ai/api/v1
+        OPENAI_API_KEY: ${{ secrets.WMIE_AGENT_OPENROUTER_API_KEY }}
         GH_AW_HARNESS_STARTUP_RETRIES: "0"
       harness:
         max-retries: 0
       config: |
-        model_reasoning_effort = "medium"
+        model_reasoning_effort = "high"
         model_reasoning_summary = "none"
         [features]
         multi_agent = false
@@ -266,7 +291,12 @@ Do not request changes for style preferences, speculative problems, change size 
 If necessary context is missing or analysis stops early, report an incomplete review.
 
 Submit exactly one native review for the specified pull request.
-The body must contain a concise human summary and exactly one fenced `json` object.
+The internal body must contain exactly one fenced `json` object.
+The trusted publisher renders the public English review and inline comments from this record.
+Do not call the inline-comment tool. Do not include presentation markup in record fields.
+Write a concise English summary. Explain each finding with concrete evidence, its impact, and an actionable fix.
+Review the code, not the author. Report blocking defects rather than style preferences or speculative concerns.
+Never claim that you ran tests. This review performs static code analysis.
 Copy `repository`, `pr_number`, `base_sha`, `head_sha`, and `manifest_sha256` from the binding.
 Copy `review_run_id` and `review_run_attempt` from the binding provenance fields `run_id` and `run_attempt`.
 Set `schema_version` to 1 and provide `complete`, `verdict`, `reviewed_files`, `summary`, and `findings`.

@@ -6,6 +6,7 @@ import json
 import re
 
 from core import GovernanceError, digest, require, safe_path, sha
+from presentation import review_reference
 
 
 APP_ID = 3757770
@@ -156,5 +157,10 @@ def validate_published(review, record, manifest, live_pr, jobs, *, bot_id=BOT_ID
     require(review.get("user", {}).get("id") == bot_id and review["user"].get("type") == "Bot", "wrong_reviewer")
     require(review.get("state") == "APPROVED", "approval_not_published")
     require(review.get("commit_id") == manifest["head_sha"], "published_commit_mismatch")
-    require(review_data(review.get("body")) == record, "published_record_mismatch")
+    reference = review_reference(review.get("body"), manifest["repository"])
+    require(reference or manifest.get("provenance", {}).get("presentation_version") != 1, "missing_review_reference")
+    if reference:
+        require(all(reference[field] == record[field] for field in reference), "published_record_mismatch")
+    else:
+        require(review_data(review.get("body")) == record, "published_record_mismatch")
     return True
