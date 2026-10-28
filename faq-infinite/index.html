@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>FAQ infinite · un accordion che risponde anche alle domande non previste</title>
-<meta name="description" content="Concept di una sezione FAQ con una riga in più: il visitatore scrive la sua domanda e la sezione risponde leggendo le pagine del sito, citando quella da cui prende la risposta. Contenuti fissi, prototipo wmie.">
+<title>FAQ infinite · accordion FAQ con risposte generate dai contenuti del sito (RAG)</title>
+<meta name="description" content="FAQ infinite: un accordion di FAQ con una riga di domanda libera. Il componente recupera i passaggi pertinenti dai contenuti del sito e risponde citando la pagina di origine. Retrieval-augmented generation su CMS headless.">
 <link rel="canonical" href="https://wmie.github.io/faq-infinite/">
 <meta property="og:type" content="article">
-<meta property="og:title" content="FAQ infinite · un accordion che risponde anche alle domande non previste">
-<meta property="og:description" content="Una sezione FAQ con una riga in più: il visitatore scrive la sua domanda e il sito risponde leggendo i propri contenuti.">
+<meta property="og:title" content="FAQ infinite · accordion FAQ con risposte generate dai contenuti del sito (RAG)">
+<meta property="og:description" content="FAQ infinite: un accordion di FAQ con una riga di domanda libera. Il componente recupera i passaggi pertinenti dai contenuti del sito e risponde citando la pagina di origine. Retrieval-augmented generation su CMS headless.">
 <meta property="og:url" content="https://wmie.github.io/faq-infinite/">
 <meta property="og:image" content="https://wmie.github.io/media/faq-infinite.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -26,7 +26,7 @@
 
 <main>
   <section class="hero"><div class="wrap">
-    <p class="eyebrow">Concept 01 · contenuti fissi</p>
+    <p class="eyebrow">Componente 01 · Contenuti</p>
     <h1>FAQ infinite</h1>
     <p class="lead">Le FAQ le scrive chi fa il sito, la domanda ce l'ha chi lo visita, e le due liste coincidono di rado. Questa sezione ha una riga in più in fondo all'accordion: «Chiedi qualsiasi altra cosa».</p>
   </div></section>
@@ -35,19 +35,31 @@
     <div class="chrome">
       <span class="dots"><i></i><i></i><i></i></span>
       <span class="chrome__url">wmie.github.io/faq-infinite/demo/</span>
-      <button class="chrome__replay" type="button">Rigioca</button>
+      <button class="chrome__replay" type="button">Riavvia</button>
     </div>
-    <div class="stage"><iframe src="./demo/" title="Demo: una sezione FAQ che risponde a una domanda scritta dal visitatore" loading="lazy" scrolling="no"></iframe></div>
-    <p class="stage__hint">La demo parte da sola e si ferma quando ha finito. Dura circa 25 secondi.</p>
+    <div class="stage"><iframe src="./demo/" title="Una sezione FAQ che risponde a una domanda scritta dal visitatore" loading="lazy" scrolling="no"></iframe></div>
+    <p class="stage__hint">Si avvia da solo · circa 25 secondi</p>
     <div class="fallback">
       <video src="../media/faq-infinite.mp4" poster="../media/faq-infinite.jpg" controls playsinline preload="none"></video>
-      <p class="stage__hint">Da telefono trovate la registrazione. La demo vera è disegnata per una finestra da desktop.</p>
+      <p class="stage__hint">Il componente è pensato per desktop: qui trovate la registrazione.</p>
     </div>
   </div></section>
 
   <section><div class="wrap wrap--text piece">
+    <h2>Scheda tecnica</h2>
+    <dl class="spec">
+      <dt>Componente</dt><dd><code>FaqAccordion</code> con <code>AskRow</code>, la riga di domanda libera</dd>
+      <dt>Pattern</dt><dd>Retrieval-augmented generation (RAG) con citazione della fonte</dd>
+      <dt>Recupero</dt><dd>Ricerca ibrida BM25 + embedding sui passaggi del CMS, re-ranking dei primi risultati</dd>
+      <dt>Generazione</dt><dd>LLM vincolato ai passaggi recuperati; sotto la soglia di confidenza il componente rimanda al contatto</dd>
+      <dt>Indicizzazione</dt><dd>Webhook del CMS a ogni pubblicazione, chunking per sezione</dd>
+      <dt>Cache</dt><dd>Cache semantica sulle domande ricorrenti</dd>
+      <dt>Analytics</dt><dd>Log delle domande senza risposta, per l'analisi dei contenuti mancanti</dd>
+      <dt>Stato</dt><dd>Prototipo, sequenza dimostrativa</dd>
+    </dl>
+
     <h2>Cosa succede</h2>
-    <p>Sopra ci sono le FAQ vere di <a href="https://wmie.it">wmie.it</a>, quelle che risponderebbe chiunque abbia scritto la pagina. In fondo alla lista, dove di solito finisce l'ultima domanda, c'è un campo di testo. Il visitatore scrive la sua domanda con parole sue, la sezione cerca dentro le pagine del sito, risponde in poche righe e mette sotto il link alla pagina da cui ha preso la risposta.</p>
+    <p>Sopra ci sono le FAQ di <a href="https://wmie.it">wmie.it</a>. In fondo alla lista, dove di solito finisce l'ultima domanda, c'è un campo di testo. Il visitatore scrive la sua domanda con parole sue, la sezione cerca dentro le pagine del sito, risponde in poche righe e mette sotto il link alla pagina da cui ha preso la risposta.</p>
 
     <h2>Tre scelte di design</h2>
     <ul>
@@ -56,22 +68,19 @@
       <li><strong>Lo spazio è prenotato prima.</strong> Quando il campo si attiva, l'area della risposta si apre già alla sua altezza. Se arrivasse dopo, tutto quello che sta sotto farebbe un salto mentre il testo si scrive.</li>
     </ul>
 
-    <h2>Cosa è finto, qui dentro</h2>
-    <p>Tutto quello che vedete è scritto a mano dentro la pagina. La domanda viene digitata da un <code>setTimeout</code>, la risposta è un testo fisso, il ritardo di lettura è un numero scelto da noi. Nessun modello gira mentre guardate, e il campo non accetta quello che scrivete voi: è una recita, montata per far vedere il comportamento senza dipendere da niente.</p>
-
-    <h2>Cosa servirebbe per farla funzionare davvero</h2>
-    <p>Poco, in realtà, e niente di esotico: i contenuti del sito indicizzati e tenuti aggiornati a ogni pubblicazione, un recupero dei passaggi pertinenti, un modello che risponde solo con quello che ha recuperato e che cita la pagina, una cache per le domande che tornano. La parte che di solito viene sottovalutata è l'ultima: ogni domanda scritta lì dentro dice a chi gestisce il sito quale contenuto manca. È la lista della spesa editoriale del trimestre, raccolta gratis.</p>
-    <p>Su un sito costruito con un CMS headless questa roba si attacca ai contenuti che ci sono già. È il genere di lavoro che facciamo quando ci occupiamo di <a href="https://wmie.it/services/web-development">sviluppo web</a> e di <a href="https://wmie.it/services/artificial-intelligence">integrazioni AI</a>.</p>
+    <h2>In produzione</h2>
+    <p>I contenuti del sito vengono spezzati per sezione e indicizzati a ogni pubblicazione, con un webhook del CMS. Alla domanda, un recupero ibrido trova i passaggi pertinenti, un modello scrive la risposta usando solo quelli e allega la pagina di origine. Le domande che tornano passano da una cache semantica, quelle a cui il sito non sa rispondere finiscono in un registro.</p>
+    <p>Quel registro è la parte che di solito viene sottovalutata: ogni domanda rimasta senza risposta dice a chi gestisce il sito quale contenuto manca. Su un CMS headless il componente si attacca ai contenuti che ci sono già. È il genere di lavoro che facciamo nello <a href="https://wmie.it/services/web-development">sviluppo web</a> e nelle <a href="https://wmie.it/services/artificial-intelligence">integrazioni AI</a>.</p>
 
     <div class="cta">
       <h2>La versione raccontata bene</h2>
-      <p>Lo stesso componente, con il video e due paragrafi di contesto, sta nel Playground di wmie.it.</p>
+      <p>Lo stesso componente, con il video e il contesto, sta nel Playground di wmie.it.</p>
       <div class="cta__row">
-        <a class="btn" href="https://wmie.it/design/faq-infinite">Vedilo su wmie.it</a>
-        <a class="btn btn--ghost" href="../ricerca-conversazionale/">Prossimo concept</a>
+        <a class="btn" href="https://wmie.it/contacts">Parliamo</a>
+        <a class="btn btn--ghost" href="https://wmie.it/design/faq-infinite">Vedilo su wmie.it</a>
       </div>
     </div>
-    <a class="back" href="../">← Tutti i prototipi</a>
+    <a class="back" href="../">← Tutti i componenti</a>
   </div></section>
 </main>
 
