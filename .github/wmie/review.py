@@ -147,11 +147,19 @@ def validate_ci(expected, observations):
     return True
 
 
-def validate_published(review, record, manifest, live_pr, jobs, *, bot_id=BOT_ID):
+def validate_published(review, record, manifest, live_pr, jobs, *, bot_id=BOT_ID, merged_source_commit=None):
     validate_manifest(manifest, manifest["repository"], live_pr["number"],
                       live_pr["base"]["sha"], live_pr["head"]["sha"])
     validate_record(record, manifest)
-    require(live_pr.get("state") == "open" and not live_pr.get("draft"), "pr_not_ready")
+    if merged_source_commit is None:
+        require(live_pr.get("state") == "open" and not live_pr.get("draft"), "pr_not_ready")
+    else:
+        require(manifest["repository"] == "wmie/.github"
+                and live_pr.get("state") == "closed" and live_pr.get("merged") is True
+                and live_pr.get("merged_at") and not live_pr.get("draft")
+                and live_pr.get("merge_commit_sha") == sha(merged_source_commit)
+                and live_pr["base"]["ref"] == live_pr["base"]["repo"]["default_branch"],
+                "source_release_not_merged")
     require(record["complete"] and record["verdict"] == "approve", "review_not_approval")
     require(all(jobs.get(name) == "success" for name in ("agent", "detection", "safe_outputs")), "review_jobs_incomplete")
     require(review.get("user", {}).get("id") == bot_id and review["user"].get("type") == "Bot", "wrong_reviewer")

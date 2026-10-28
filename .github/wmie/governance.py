@@ -17,7 +17,11 @@ from review import APP_ID, BOT_ID, review_data, validate_published
 from presentation import check_summary, review_reference
 
 
-def published_approval(api, repository, pr, ci):
+def published_approval(api, repository, pr, ci, *, merged_source_commit=None):
+    from release import release_approval
+    certified = release_approval(api, None, repository, pr, ci)
+    if certified:
+        return certified
     reviews = api.pages(f"/repos/{repository}/pulls/{pr['number']}/reviews")
     candidates = [item for item in reviews if item.get("user", {}).get("id") == BOT_ID
                   and item.get("commit_id") == pr["head"]["sha"]]
@@ -45,12 +49,15 @@ def published_approval(api, repository, pr, ci):
             and binding["ci"].get("plan_sha256") == ci["plan_sha256"], "published_ci_plan_mismatch")
     jobs = run_jobs(api, repository, run)
     original_record = native_review_evidence(api, repository, run, binding["manifest"], review)
-    validate_published(review, original_record, binding["manifest"], pr, {name: job.get("conclusion") for name, job in jobs.items()})
+    validate_published(review, original_record, binding["manifest"], pr,
+                       {name: job.get("conclusion") for name, job in jobs.items()},
+                       merged_source_commit=merged_source_commit)
     safe_steps = {step.get("name"): step.get("conclusion") for step in jobs["safe_outputs"].get("steps", [])}
     require([safe_steps[key] for key in ("Validate review before publishing", "WMIE preflight") if key in safe_steps] == ["success"] and safe_steps.get("Process Safe Outputs") == "success",
             "publication_preflight_unproven")
     return {"review_id": review["id"], "run_id": run["id"], "run_attempt": run["run_attempt"],
-            "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"]}
+            "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"],
+            **({"reviewed_base_sha": binding["manifest"]["merge_base_sha"]} if merged_source_commit else {})}
 
 
 def set_check(api, repository, pr, name, *, success, details, read_api=None):
@@ -133,7 +140,8 @@ def assess(api, write_api, repository, pr_number):
         return details
     set_check(write_api, repository, pr, "Required checks", success=True, details={"state": "complete", **ci}, read_api=api)
     try:
-        approval = published_approval(api, repository, pr, ci)
+        from release import release_approval
+        approval = release_approval(api, write_api, repository, pr, ci) or published_approval(api, repository, pr, ci)
         fresh = live_pr(api, repository, pr_number)
         require(fresh["base"]["sha"] == pr["base"]["sha"] and fresh["head"]["sha"] == pr["head"]["sha"], "approval_commits_changed")
         details = {"state": "approved", **approval, "ci_run_id": ci["run_id"]}
@@ -167,6 +175,10 @@ def dispatch_review(api, repository, pr):
                    if canonical_run_title(run.get("display_title", "")).startswith(title) and run.get("status") != "completed"), None)
     if active:
         return {"state": "review_already_active", "run_id": active["id"]}
+    completed = next((run for run in recent_runs(api, repository, "wmie-review.lock.yml", **source_filter(pr))
+                      if canonical_run_title(run.get("display_title", "")) == f"{title}base={pr['base']['sha']} head={pr['head']['sha']}"), None)
+    if completed:
+        return {"state": "review_already_attempted", "run_id": completed["id"]}
     previous = previous_analysis(api, repository, pr, 0)
     if previous:
         return {"state": "analysis_already_admitted", "run_id": previous}

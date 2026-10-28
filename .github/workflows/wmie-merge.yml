@@ -33,6 +33,19 @@ jobs:
         python-version: '3.12'
     - name: Install the configuration parser
       run: 'python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt'
+    - name: Read central release evidence
+      id: release
+      uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+      with:
+        client-id: ${{ secrets.WMIE_REVIEW_CLIENT_ID }}
+        private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
+        owner: ${{ github.repository_owner }}
+        repositories: ${{ github.repository == 'wmie/.github' && '.github' || format('{0},.github', github.event.repository.name)
+          }}
+        permission-contents: read
+        permission-pull-requests: read
+        permission-actions: read
+        permission-checks: read
     - name: Mint the constrained merger token
       id: app
       uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
@@ -50,6 +63,7 @@ jobs:
         GH_TOKEN: ${{ steps.app.outputs.token }}
         WMIE_PR_NUMBER: ${{ inputs.pr_number }}
         WMIE_EXPECTED_HEAD: ${{ inputs.expected_head }}
+        WMIE_RELEASE_READ_TOKEN: ${{ steps.release.outputs.token }}
         WMIE_AUTOMERGE_ENABLED: ${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}
       run: python3 wmie-control/.github/wmie/merge.py
     - name: Preserve the merge result
