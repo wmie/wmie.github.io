@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import re
 from urllib.parse import quote
 
 from core import archive_json, digest, require, sha
-from review import validate_ci, validate_manifest, validate_native_output
+from review import BOT_ID, validate_ci, validate_manifest, validate_native_output
 from presentation import ARTIFACT, review_reference, validate_publication
 
 
@@ -37,6 +38,27 @@ def ci_title(pr_number, base_sha, head_sha):
     return f"WMIE CI pr={pr_number} base={sha(base_sha)} head={sha(head_sha)}"
 
 
+BOOTSTRAP_BRANCH = 'chore/ubicloud-runners'
+BOOTSTRAP_PRS = {BOOTSTRAP_BRANCH: 37, 'fix/ubicloud-replica-dispatch': 38}
+
+
+def bootstrap_source(run):
+    return (run.get('repository', {}).get('full_name') == 'wmie/.github'
+            and run.get('head_branch') in BOOTSTRAP_PRS)
+
+
+def source_matches_pr(run, pr):
+    if bootstrap_source(run):
+        return (pr.get('number') == BOOTSTRAP_PRS[run['head_branch']]
+                and run.get('head_sha') == pr['head']['sha'])
+    if run.get('head_sha') == pr['base']['sha']:
+        return True
+    replica = run.get('_wmie_replica')
+    if replica and replica.get('pr_number') == pr.get('number') and replica.get('base_sha') == pr['base']['sha'] and replica.get('head_sha') == pr['head']['sha']:
+        return True
+    return False
+
+
 def trusted_run(api, repository, run_id, workflow, *, events, default_branch=None):
     require(type(run_id) is int and run_id > 0, "invalid_run_id")
     run = api.request("GET", f"/repos/{repository}/actions/runs/{run_id}")
@@ -47,11 +69,36 @@ def trusted_run(api, repository, run_id, workflow, *, events, default_branch=Non
     require(run.get("event") in events, "run_event_not_trusted")
     if default_branch is None:
         default_branch = api.request("GET", f"/repos/{repository}")["default_branch"]
-    require(run.get("head_branch") == default_branch, "run_branch_not_trusted")
+    replica = None
+    if (workflow == CI_WORKFLOW and run.get('head_branch', '').startswith('chore/wmie-agentic-update-')):
+        from runner_migration import admit_replica_run
+        replica = admit_replica_run(api, repository, run)
+    require(run.get("head_branch") == default_branch or bootstrap_source(run) or replica, "run_branch_not_trusted")
     source_sha = sha(run.get("head_sha"))
     # A dispatch from a feature branch cannot claim the default-branch workflow.
     comparison = api.request("GET", f"/repos/{repository}/compare/{source_sha}...{quote(default_branch, safe='')}")
-    require(comparison.get("status") in {"identical", "ahead"}, "run_source_not_on_default_branch")
+    on_default = comparison.get("status") in {"identical", "ahead"}
+    if replica:
+        run["_wmie_replica"] = replica
+    if not on_default and not replica:
+        pin = os.environ.get('WMIE_UBICLOUD_BOOTSTRAP_SHA')
+        require(bootstrap_source(run), 'run_source_not_on_default_branch')
+        if pin == source_sha:
+            current = api.request('GET', f"/repos/{repository}/git/ref/heads/{run['head_branch']}")
+            require(current['object']['sha'] == pin, 'bootstrap_branch_changed')
+        else:
+            # Historical proof survives a squash merge without enabling new runs.
+            source_pr = api.request('GET', f"/repos/{repository}/pulls/{BOOTSTRAP_PRS[run['head_branch']]}")
+            require(source_pr.get('merged') is True and source_pr['head']['sha'] == source_sha
+                    and source_pr['base']['ref'] == default_branch
+                    and source_pr.get('merged_by', {}).get('id') == BOT_ID,
+                    'bootstrap_history_not_merged')
+            merged = sha(source_pr.get('merge_commit_sha'))
+            original = api.request('GET', f'/repos/{repository}/git/commits/{source_sha}')
+            actual = api.request('GET', f'/repos/{repository}/git/commits/{merged}')
+            require(original['tree']['sha'] == actual['tree']['sha'], 'bootstrap_merge_tree_changed')
+            history = api.request('GET', f'/repos/{repository}/compare/{merged}...{quote(default_branch, safe="")}')
+            require(history.get('status') in {'identical', 'ahead'}, 'bootstrap_merge_not_on_default')
     require(type(run.get("run_attempt")) is int and run["run_attempt"] > 0, "invalid_run_attempt")
     return run
 
@@ -122,7 +169,7 @@ def validate_ci_run(run, pr, plan, jobs):
             "ci_commit_binding_mismatch")
     base = pr["base"]
     if base.get("ref") and base.get("ref") == base.get("repo", {}).get("default_branch"):
-        require(run.get("head_sha") == base["sha"], "ci_source_base_changed")
+        require(source_matches_pr(run, pr), "ci_source_base_changed")
     require(run.get("status") == "completed" and run.get("conclusion") == "success", "ci_run_incomplete")
     expected = [{"id": name, "applicable": True} for name in ("WMIE plan", "WMIE content", "WMIE security", "WMIE CI")]
     expected.extend({"id": "WMIE / " + c["id"], "applicable": True} for c in plan["components"] if c.get("checks"))

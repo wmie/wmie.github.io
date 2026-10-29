@@ -18,8 +18,10 @@ name: Pull request events
 permissions: {}
 jobs:
   signal:
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     permissions: {}
     steps:
     - name: Signal a review change
       run: 'true'
+env:
+  WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}

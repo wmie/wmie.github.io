@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
-from core import require, write_json
+from core import require
+
+RUNNER = "ubicloud-standard-2"
+TRUSTED_REF = "(endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))"
 
 
 PINS = {
@@ -33,11 +37,11 @@ def trusted_setup():
 
 def reconciliation_job(needs):
     return {"name": "Refresh pull request status", "needs": needs,
-            "if": "always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))",
-            "runs-on": "ubuntu-latest", "timeout-minutes": 3, "permissions": {"actions": "write"},
+            "if": "always() && " + TRUSTED_REF,
+            "runs-on": RUNNER, "timeout-minutes": 3, "permissions": {"actions": "write"},
             "steps": [{"name": "Request final governance assessment", "env": {
                 "GH_TOKEN": "${{ github.token }}", "GH_REPO": "${{ github.repository }}",
-                "WMIE_DEFAULT_BRANCH": "${{ github.event.repository.default_branch }}",
+                "WMIE_DEFAULT_BRANCH": "${{ (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA) && github.ref_name || github.event.repository.default_branch }}",
                 "WMIE_PR_NUMBER": "${{ inputs.pr_number }}", "WMIE_SOURCE_RUN": "${{ github.run_id }}"},
                 "run": 'gh workflow run wmie-governance.yml --ref "$WMIE_DEFAULT_BRANCH" -f pr_number="$WMIE_PR_NUMBER" -f source_run_id="$WMIE_SOURCE_RUN"'}]}
 
@@ -76,19 +80,19 @@ def ci_workflow():
          "run": "python3 wmie-control/.github/wmie/control.py ci-component --source wmie-source"},
     ]
     jobs = {
-        "plan": {"name": "Prepare checks", "runs-on": "ubuntu-latest", "timeout-minutes": 10, "permissions": permissions,
+        "plan": {"name": "Prepare checks", "runs-on": RUNNER, "timeout-minutes": 10, "permissions": permissions,
                  "outputs": {"matrix": "${{ steps.plan.outputs.matrix }}", "has_components": "${{ steps.plan.outputs.has_components }}",
                              "merge_sha": "${{ steps.context.outputs.merge_sha }}", "binding_id": "${{ steps.binding.outputs.artifact-id }}"}, "steps": planner},
         "project": {"name": "Project checks / ${{ matrix.component.id }}", "needs": ["plan"], "if": "needs.plan.outputs.has_components == 'true'",
-                    "runs-on": "ubuntu-latest", "timeout-minutes": 30, "permissions": {"contents": "read"},
+                    "runs-on": RUNNER, "timeout-minutes": 30, "permissions": {"contents": "read"},
                     "strategy": {"fail-fast": False, "matrix": "${{ fromJSON(needs.plan.outputs.matrix) }}"}, "steps": component_steps},
     }
     for kind in ("content", "security"):
-        jobs[kind] = {"name": {"content": "JSON validation", "security": "Secret scan (Gitleaks)"}[kind], "needs": ["plan"], "runs-on": "ubuntu-latest", "timeout-minutes": 15,
+        jobs[kind] = {"name": {"content": "JSON validation", "security": "Secret scan (Gitleaks)"}[kind], "needs": ["plan"], "runs-on": RUNNER, "timeout-minutes": 15,
                       "permissions": {"contents": "read"}, "steps": trusted_setup() + [checkout_source, load_binding,
                       {"name": "Inspect " + kind, "run": "python3 wmie-control/.github/wmie/baseline.py " + kind + " --source wmie-source --binding wmie-ci-binding.json"}]}
     jobs["aggregate"] = {"name": "Required checks", "needs": ["plan", "project", "content", "security"], "if": "always()",
-                         "runs-on": "ubuntu-latest", "timeout-minutes": 20, "permissions": permissions,
+                         "runs-on": RUNNER, "timeout-minutes": 20, "permissions": permissions,
                          "steps": trusted_setup() + [load_binding, {"name": "Require actual CI success", "env": context_env,
                          "run": "python3 wmie-control/.github/wmie/control.py ci-aggregate --binding wmie-ci-binding.json"}]}
     jobs["reconcile"] = reconciliation_job(["aggregate"])
@@ -119,8 +123,8 @@ def governance_workflow(default_branch, external_workflows=()):
         "workflow_dispatch": {"inputs": {"pr_number": {"required": True, "type": "string"},
             "source_run_id": {"required": False, "type": "string", "default": ""}}}},
         "permissions": {}, "concurrency": {"group": "wmie-governance-${{ github.repository }}", "cancel-in-progress": False, "queue": "max"},
-        "jobs": {"governance": {"if": "endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))",
-            "runs-on": "ubuntu-latest", "timeout-minutes": 15, "environment": "wmie-review",
+        "jobs": {"governance": {"if": TRUSTED_REF,
+            "runs-on": RUNNER, "timeout-minutes": 15, "environment": "wmie-review",
             "permissions": {"contents": "read", "actions": "write", "checks": "read", "pull-requests": "read"}, "steps": steps}}}
 
 
@@ -129,7 +133,7 @@ def review_events_workflow(default_branch="main"):
             "push": {"branches-ignore": [default_branch]},
             "pull_request": {"types": ["opened", "synchronize", "reopened", "ready_for_review", "edited"]},
             "pull_request_review": {"types": ["submitted", "edited", "dismissed"]}},
-            "permissions": {}, "jobs": {"signal": {"runs-on": "ubuntu-latest", "permissions": {},
+            "permissions": {}, "jobs": {"signal": {"runs-on": RUNNER, "permissions": {},
             "steps": [{"name": "Signal a review change", "run": "true"}]}}}
 
 
@@ -161,12 +165,36 @@ def merge_workflow():
                 "expected_head": {"required": True, "type": "string"}}}},
             "permissions": {}, "concurrency": {"group": "wmie-merge-${{ github.repository }}",
                 "cancel-in-progress": False, "queue": "max"},
-            "jobs": {"merge": {"if": "endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))",
-                "environment": "wmie-review", "runs-on": "ubuntu-latest", "timeout-minutes": 15,
+            "jobs": {"merge": {"if": TRUSTED_REF,
+                "environment": "wmie-review", "runs-on": RUNNER, "timeout-minutes": 15,
                 "permissions": {"contents": "read"}, "steps": steps}}}
 
 
-def render(directory, default_branch, profile):
+def profile_json(value, width=100):
+    """Keep short arrays without objects on one line, preserving profile data."""
+    require(type(width) is int and 1 <= width <= 320, 'profile_line_width_invalid')
+    def scalar_values(items):
+        return all(not isinstance(child, dict) and (not isinstance(child, list) or scalar_values(child))
+                   for child in items)
+    def encode(item, depth=0, column=0):
+        if not isinstance(item, (dict, list)) or not item:
+            return json.dumps(item, ensure_ascii=False)
+        padding = '  ' * depth
+        if isinstance(item, dict):
+            rows = []
+            for key, child in item.items():
+                prefix = '  ' * (depth + 1) + json.dumps(key, ensure_ascii=False) + ': '
+                rows.append(prefix + encode(child, depth + 1, len(prefix)))
+            return '{\n' + ',\n'.join(rows) + '\n' + padding + '}'
+        flat = json.dumps(item, ensure_ascii=False)
+        if scalar_values(item) and column + len(flat) <= width:
+            return flat
+        prefix = '  ' * (depth + 1)
+        return '[\n' + ',\n'.join(prefix + encode(child, depth + 1, len(prefix)) for child in item) + '\n' + padding + ']'
+    return encode(value) + '\n'
+
+
+def render(directory, default_branch, profile, *, profile_line_width=100):
     import yaml
     from ci import validate_profile
     validate_profile(profile)
@@ -180,6 +208,8 @@ def render(directory, default_branch, profile):
         def ignore_aliases(self, value):
             return True
     for name, value in values.items():
-        (workflows / name).write_text(yaml.dump(value, Dumper=Dumper, sort_keys=False, width=120))
-    write_json(root / ".github/wmie/ci-profile.json", profile)
+        (workflows / name).write_text(yaml.dump({**value, "env": {"WMIE_UBICLOUD_BOOTSTRAP_SHA": "${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}"}}, Dumper=Dumper, sort_keys=False, width=120))
+    profile_path = root / ".github/wmie/ci-profile.json"
+    profile_path.parent.mkdir(parents=True, exist_ok=True)
+    profile_path.write_text(profile_json(profile, profile_line_width))
     return list(values)

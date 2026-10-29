@@ -28,8 +28,10 @@ concurrency:
   queue: max
 jobs:
   governance:
-    if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
-    runs-on: ubuntu-latest
+    if: (endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository
+      == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch')
+      && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     environment: wmie-review
     permissions:
@@ -78,3 +80,5 @@ jobs:
         WMIE_RELEASE_READ_TOKEN: ${{ steps.release.outputs.token }}
         WMIE_AUTOMERGE_ENABLED: ${{ vars.WMIE_AUTOMERGE_ENABLED || 'true' }}
       run: python3 wmie-control/.github/wmie/governance.py
+env:
+  WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}

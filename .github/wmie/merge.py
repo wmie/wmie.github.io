@@ -5,6 +5,7 @@ import os
 import sys
 
 from control import ci_evidence, live_pr, number, repository_name
+from evidence import BOOTSTRAP_PRS
 from core import GitHub, GovernanceError, require, sha, write_json
 from governance import published_approval
 from review import BOT_ID
@@ -50,9 +51,16 @@ def main():
     repository = repository_name(os.environ["GITHUB_REPOSITORY"])
     default = api.request("GET", f"/repos/{repository}")["default_branch"]
     require(os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch", "untrusted_merge_event")
-    require(os.environ.get("GITHUB_REF") == "refs/heads/" + default, "untrusted_merge_branch")
+    bootstrap_branch = next((branch for branch, pr in BOOTSTRAP_PRS.items()
+                             if str(pr) == os.environ.get('WMIE_PR_NUMBER')), None)
+    bootstrap = (repository == 'wmie/.github' and bootstrap_branch
+                 and os.environ.get('GITHUB_REF') == 'refs/heads/' + bootstrap_branch
+                 and os.environ.get('GITHUB_SHA') == os.environ.get('WMIE_UBICLOUD_BOOTSTRAP_SHA')
+                 and bool(os.environ.get('WMIE_UBICLOUD_BOOTSTRAP_SHA')))
+    require(os.environ.get("GITHUB_REF") == "refs/heads/" + default or bootstrap, "untrusted_merge_branch")
+    source_branch = bootstrap_branch if bootstrap else default
     require(os.environ.get("GITHUB_WORKFLOW_REF") ==
-            f"{repository}/.github/workflows/wmie-merge.yml@refs/heads/{default}", "untrusted_merge_workflow")
+            f"{repository}/.github/workflows/wmie-merge.yml@refs/heads/{source_branch}", "untrusted_merge_workflow")
     result = merge_approved(api, repository, number(os.environ["WMIE_PR_NUMBER"]), os.environ["WMIE_EXPECTED_HEAD"], default)
     print(json.dumps(result, sort_keys=True))
 

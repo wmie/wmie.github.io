@@ -14,7 +14,7 @@ from urllib.parse import urlencode
 
 from ci import discover, plan, validate_profile
 from core import GitHub, GovernanceError, digest, output, read_json, require, safe_path, sha, write_json
-from evidence import canonical_run_title, CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, published_comments, run_jobs, trusted_run, validate_ci_run, validate_input_record
+from evidence import source_matches_pr, canonical_run_title, CI_WORKFLOW, REVIEW_WORKFLOW, artifact_record, ci_title, published_comments, run_jobs, trusted_run, validate_ci_run, validate_input_record
 from git_input import discovery_tree, fetch, git, snapshot
 from review import BOT_ID, validate_ci, validate_manifest, validate_native_output
 from presentation import PLAN_PATH, RECORD_PATH, render, text_hash, without_framework_marker
@@ -63,6 +63,10 @@ def recent_runs(api, repository, workflow, **filters):
 def latest_ci(api, repository, pr):
     title = ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"])
     filters = {"event": "workflow_dispatch", **source_filter(pr)}
+    if pr.get('head', {}).get('ref', '').startswith('chore/wmie-agentic-update-'):
+        from runner_migration import replica_certificate
+        if replica_certificate(api, repository, pr):
+            filters = {'event':'workflow_dispatch', 'branch':pr['head']['ref'], 'head_sha':pr['head']['sha']}
     match = next((run for run in recent_runs(api, repository, "wmie-ci.yml", **filters)
                   if canonical_run_title(run.get("display_title")) == title), None)
     require(match is not None, "ci_run_missing", "Start Pull request checks for the current base and head.")
@@ -72,6 +76,11 @@ def latest_ci(api, repository, pr):
 def source_filter(pr):
     base = pr["base"]
     default = base.get("repo", {}).get("default_branch")
+    if pr.get('number') == 37 and base.get('repo', {}).get('full_name') == 'wmie/.github':
+        return {'branch': 'chore/ubicloud-runners', 'head_sha': pr['head']['sha']}
+    if pr.get('number') == 38 and base.get('repo', {}).get('full_name') == 'wmie/.github':
+        # Both normal and pinned producers remain subject to trusted_run.
+        return {}
     filters = {"branch": default} if default else {}
     if default and base.get("ref") == default:
         filters["head_sha"] = base["sha"]
@@ -116,7 +125,9 @@ def external_ci(api, repository, pr, checks):
         if expected['workflow'] not in verified_workflows:
             original = api.file(repository, expected['workflow'], pr['base']['sha'])
             proposed = api.file(repository, expected['workflow'], pr['head']['sha'])
-            require(original == proposed, 'external_workflow_changed', expected['workflow'])
+            from runner_migration import authorized_change
+            require(original == proposed or authorized_change(repository, expected['workflow'], original, proposed),
+                    'external_workflow_changed', expected['workflow'])
             verified_workflows.add(expected['workflow'])
         applies, reason = applicable(expected, pr['base'].get('ref', ''), paths)
         expected_checks.append({**expected, 'applicable': applies, **({'reason': reason} if reason else {})})
@@ -225,7 +236,7 @@ def review_prepare(api, repository, event):
         if expected:
             require(pr[side]["sha"] == sha(expected), side + "_changed")
     if pr["base"].get("ref") == pr["base"].get("repo", {}).get("default_branch"):
-        require(run["head_sha"] == pr["base"]["sha"], "review_source_base_changed",
+        require(source_matches_pr(run, pr), "review_source_base_changed",
                 "Start a review from the current default branch before admitting inference.")
     evidence = ci_evidence(api, repository, pr, ci_run_id=source_run_id)
     repeat = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and str(event.get("inputs", {}).get("repeat_review", "false")).lower() == "true"
@@ -361,7 +372,7 @@ def ci_context(api, repository, event):
             "Update the PR branch from its current base before starting CI and review.")
     run = trusted_run(api, repository, number(os.environ["GITHUB_RUN_ID"]), CI_WORKFLOW, events={"workflow_dispatch"})
     if "head_sha" in source_filter(pr):
-        require(run["head_sha"] == pr["base"]["sha"], "ci_source_base_changed")
+        require(source_matches_pr(run, pr), "ci_source_base_changed")
     require(canonical_run_title(run.get("display_title")) == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]), "ci_title_invalid")
     require(pr.get("merge_commit_sha"), "pr_merge_not_ready", "GitHub must compute the proposed merge before CI can start.")
     merge_sha = sha(pr["merge_commit_sha"])

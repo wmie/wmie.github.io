@@ -105,7 +105,8 @@ def validate_proposal(messages, manifest):
     require(all(isinstance(m, dict) and m.get("type") in permitted for m in messages), "unexpected_safe_output")
     review = reviews[0]
     require(review.get("repo", manifest["repository"]) == manifest["repository"], "proposal_repository_mismatch")
-    require(str(review.get("pull_request_number")) == str(manifest["pr_number"]), "proposal_pr_mismatch")
+    # gh-aw permits omission when the trusted frontmatter pins the target.
+    require(str(review.get("pull_request_number", manifest["pr_number"])) == str(manifest["pr_number"]), "proposal_pr_mismatch")
     record = validate_record(review_data(review.get("body")), manifest)
     require(review.get("event") == EVENTS[record["verdict"]], "review_event_mismatch")
     # The trusted frontmatter pins commit-id. The native tool does not expose it to the model.

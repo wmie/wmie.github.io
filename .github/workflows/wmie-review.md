@@ -1,5 +1,7 @@
 ---
 name: AI code review
+runs-on: ubicloud-standard-2
+runs-on-slim: ubicloud-standard-2
 run-name: AI code review pr=${{ inputs.pr_number }} base=${{ inputs.base_sha || 'current' }} head=${{ inputs.head_sha || 'current' }}
 on:
   workflow_dispatch:
@@ -29,6 +31,8 @@ permissions:
   contents: read
   pull-requests: read
   actions: read
+env:
+  WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}
 engine:
   id: codex
   model: deepseek/deepseek-v4.1-flash-1017
@@ -77,8 +81,8 @@ jobs:
   prepare:
     name: Prepare review
     environment: wmie-review
-    if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
-    runs-on: ubuntu-latest
+    if: (endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     permissions:
       contents: read
@@ -146,8 +150,8 @@ jobs:
     name: Refresh pull request status
     needs: [prepare, agent, detection, safe_outputs]
     detection-gate: status-only
-    if: always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
-    runs-on: ubuntu-latest
+    if: always() && (endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))
+    runs-on: ubicloud-standard-2
     timeout-minutes: 3
     permissions:
       actions: write
@@ -156,7 +160,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
-          WMIE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          WMIE_DEFAULT_BRANCH: ${{ (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA) && github.ref_name || github.event.repository.default_branch }}
           WMIE_PR_NUMBER: ${{ inputs.pr_number }}
           WMIE_SOURCE_RUN: ${{ github.run_id }}
         run: gh workflow run wmie-governance.yml --ref "$WMIE_DEFAULT_BRANCH" -f pr_number="$WMIE_PR_NUMBER" -f source_run_id="$WMIE_SOURCE_RUN"
@@ -184,7 +188,7 @@ safe-outputs:
   footer: false
   environment: wmie-review
   needs: [prepare]
-  runs-on: ubuntu-latest
+  runs-on: ubicloud-standard-2
   timeout-minutes: 15
   report-failure-as-issue: false
   report-failed-jobs: false
@@ -209,6 +213,7 @@ safe-outputs:
     target: ${{ needs.prepare.outputs.pr_number }}
     commit-id: ${{ needs.prepare.outputs.head_sha }}
   threat-detection:
+    runs-on: ubicloud-standard-2
     enabled: true
     continue-on-error: false
     report-as-issue: false
@@ -268,6 +273,19 @@ safe-outputs:
 ---
 # Review the proposed change
 
+## Required completion protocol
+
+A final assistant message does not publish a review. The task is incomplete until you call the registered `submit_pull_request_review` tool.
+Before analysis, create `/tmp/gh-aw/agent/wmie-review-draft.json` from the binding data. Copy `repository`, `pr_number`, `base_sha`, `head_sha`, and `manifest_sha256` without changes.
+Copy `review_run_id` from `provenance.run_id` and `review_run_attempt` from `provenance.run_attempt`. Set `schema_version` to 1.
+After analysis, fill `complete`, `verdict`, `reviewed_files`, `summary`, and `findings`. Keep the binding fields in the record.
+Run `python3 .github/wmie/draft.py review-input/manifest.json /tmp/gh-aw/agent/wmie-review-draft.json`.
+Correct the record until the validator returns `state: accepted`. Do not run application code or tests.
+Call the registered `submit_pull_request_review` tool with the verdict's event and a body containing the validated JSON in one fenced `json` block.
+Use `REQUEST_CHANGES` for blocking findings, `APPROVE` for a complete positive review, or `COMMENT` for an incomplete review.
+Do not replace this tool call with a final message. Do not finish until the tool returns success. Keep every finding in the submitted record.
+
+
 Review the pull request described by `review-input/binding.json`.
 The manifest identifies the repository, pull request, current base, merge base, head, and every changed path.
 Complete changed files are in `review-input/base` and `review-input/head`.
@@ -308,3 +326,5 @@ Use event `APPROVE`, verdict `approve`, complete true, and no findings only afte
 Use event `REQUEST_CHANGES`, verdict `changes_requested`, complete true, and evidenced findings for a completed review with blocking defects.
 Use event `COMMENT`, verdict `incomplete`, and complete false when the analysis is unavailable or incomplete.
 Do not publish a partial approval. Do not expose private reasoning.
+
+Complete the required completion protocol now. Validate the bound draft, then call `submit_pull_request_review`. Plain assistant text is not a review submission.

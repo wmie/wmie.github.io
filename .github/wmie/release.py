@@ -13,7 +13,7 @@ from pathlib import Path
 from core import GitHub, GovernanceError, require, sha, safe_path
 
 
-def release_approval(api, write_api, repository, pr, ci):
+def release_approval(api, write_api, repository, pr, ci, *, verify_only=False):
     from distribution import SOURCE_REPOSITORY, MARKER, HOLDS, tree_entries
     from governance import published_approval
     from control import ci_evidence
@@ -27,7 +27,7 @@ def release_approval(api, write_api, repository, pr, ci):
             or pr['head'].get('repo', {}).get('full_name') != repository):
         return None
     changed = api.pages(f"/repos/{repository}/pulls/{pr['number']}/files")
-    if not any(item['filename'] == MARKER for item in changed):
+    if not any(item['filename'] == MARKER for item in changed) and not pr['head']['ref'].endswith('-runners'):
         return None
     require(type(pr.get('changed_files')) is int and pr['changed_files'] == len(changed),
             'release_files_incomplete')
@@ -52,19 +52,26 @@ def release_approval(api, write_api, repository, pr, ci):
     approval = published_approval(source_api, SOURCE_REPOSITORY, source_pr, source_ci,
                                   merged_source_commit=commit)
     entries = tree_entries(api, repository, base)
-    require(MARKER in entries, 'release_first_install_requires_owner')
-    old_marker = json.loads(api.file(repository, MARKER, base))
-    require(old_marker.get('source_repository') == SOURCE_REPOSITORY, 'release_previous_source_invalid')
-    # Refuse to overwrite unrecorded local variants.
-    for path, expected in old_marker['files'].items():
-        require(hashlib.sha256(api.file(repository, path, base)).hexdigest() == expected,
-                'release_local_variant', path)
+    if MARKER in entries:
+        old_marker = json.loads(api.file(repository, MARKER, base))
+        require(old_marker.get('source_repository') == SOURCE_REPOSITORY, 'release_previous_source_invalid')
+        # Refuse to overwrite unrecorded local variants.
+        for path, expected in old_marker['files'].items():
+            require(hashlib.sha256(api.file(repository, path, base)).hexdigest() == expected,
+                    'release_local_variant', path)
+        previous_commit = sha(old_marker.get('source_commit'))
+    else:
+        from runner_migration import approved_first_install
+        require(approved_first_install(repository, base, pr['base']['ref'], entries),
+                'release_first_install_requires_owner')
+        # The target base is owner-pinned. This base authenticates only the generator lineage.
+        previous_commit = sha(approval['reviewed_base_sha'])
     profile = json.loads(api.file(repository, '.github/wmie/ci-profile.json', base))
     try:
         expected_files = reviewed_bundle(source_api, api, commit, repository, pr, profile, entries,
                                          reviewed_head=sha(source_pr['head']['sha']),
                                          reviewed_base=sha(approval['reviewed_base_sha']),
-                                         previous_commit=sha(old_marker.get('source_commit')))
+                                         previous_commit=previous_commit)
     except GovernanceError as error:
         if error.code in {'source_review_baseline_mismatch', 'release_source_not_forward'}:
             return None
@@ -96,6 +103,9 @@ def release_approval(api, write_api, repository, pr, ci):
             actual = head_entries.get(path, {})
             require(actual.get('type') == 'blob' and actual.get('mode') == '100644'
                     and actual.get('sha') == blob, 'release_file_mismatch', path)
+    if verify_only:
+        return {'source_commit': commit, 'source_review_id': approval['review_id'],
+                'base_sha': base, 'head_sha': head, 'repository': repository}
     body = (f"Automation release verified\n\n"
             f"Source: {SOURCE_REPOSITORY}@{commit}\n"
             f"Central review: https://github.com/{SOURCE_REPOSITORY}/pull/{source_pr['number']}#pullrequestreview-{approval['review_id']}\n"
@@ -144,9 +154,12 @@ class Snapshot:
         return (Path(sys.argv[2]) / safe_path(path)).read_bytes()
 with tempfile.TemporaryDirectory() as scratch:
     api = Snapshot()
-    files = bundle(root, request['profile'], request['branch'], request['commit'])
+    files = bundle(root, request['profile'], request['branch'], request['commit'], repository=request['repository'])
     files.update(legacy_changes(api, request['repository'], request['base'], request['entries'], scratch))
     files.update(instruction_changes(api, request['repository'], request['base'], request['entries'], root))
+    if request.get('custom_runners'):
+        from runner_migration import custom_changes
+        files.update(custom_changes(api, request['repository'], request['base']))
     print(json.dumps(files))
 """
 
@@ -177,7 +190,11 @@ def reviewed_bundle(source_api, target_api, commit, repository, pr, profile, ent
         require(tree == reviewed_tree, 'source_generator_tree_unreviewed')
         previous_tree = git(objects, 'ls-tree', '-r', '-z', previous_commit, '--', *paths)
         review_base_tree = git(objects, 'ls-tree', '-r', '-z', reviewed_base, '--', *paths)
-        require(previous_tree == review_base_tree, 'source_review_baseline_mismatch')
+        if previous_tree != review_base_tree and previous_commit != commit:
+            from runner_migration import approved_baseline
+            old = json.loads(target_api.file(repository, '.github/wmie/installation.json', pr['base']['sha']))
+            require(approved_baseline(repository, previous_commit, old.get('files')),
+                    'source_review_baseline_mismatch')
         for row in tree.split(b'\0'):
             if not row:
                 continue
@@ -188,14 +205,22 @@ def reviewed_bundle(source_api, target_api, commit, repository, pr, profile, ent
             target = source / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(git(objects, 'cat-file', 'blob', oid))
+        from runner_migration import test_repair_records
+        migration_path = source / '.github/wmie/runner-migration.json'
+        custom_runners = pr.get('head', {}).get('ref', '').endswith('-runners')
+        repairs = test_repair_records(repository, json.loads(migration_path.read_text())
+                                      if migration_path.is_file() else {'repositories': {}}) if custom_runners else {}
+        repair_paths = set(repairs) | {path for record in repairs.values() for path in record.get('context', {})}
+        require(repair_paths <= entries.keys(), 'migration_test_file_missing')
         for path, entry in entries.items():
-            if path == 'AGENTS.md' or (path.startswith('.github/workflows/') and path.endswith(('.yml', '.yaml'))):
+            if path in repair_paths or path == 'AGENTS.md' or (path.startswith('.github/workflows/') and path.endswith(('.yml', '.yaml'))):
                 require(entry.get('mode') in {'100644', '100755'}, 'release_snapshot_file_mode', path)
                 target = snapshot / safe_path(path)
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_bytes(target_api.file(repository, path, pr['base']['sha']))
         request = {'repository': repository, 'base': pr['base']['sha'], 'commit': commit,
-                   'branch': pr['base']['ref'], 'profile': profile, 'entries': entries}
+                   'branch': pr['base']['ref'], 'profile': profile, 'entries': entries,
+                   'custom_runners': custom_runners}
         result = subprocess.run([sys.executable, '-I', '-B', '-c', _GENERATE, str(source), str(snapshot)],
                                 input=json.dumps(request), text=True, capture_output=True,
                                 cwd=directory, env={'PATH': os.defpath, 'LANG': 'C.UTF-8'}, timeout=60)

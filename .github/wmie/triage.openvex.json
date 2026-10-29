@@ -1,0 +1,22 @@
+{
+  "@context": "https://openvex.dev/ns/v0.2.0",
+  "@id": "urn:uuid:5a83a26f-c3e1-42c2-88dc-219bc7b331e6",
+  "author": "WMIE",
+  "timestamp": "2026-10-29T11:00:00Z",
+  "version": 1,
+  "statements": [
+    {
+      "vulnerability": {
+        "name": "CVE-2026-115887"
+      },
+      "products": [
+        {
+          "@id": "pkg:npm/graphql-scalars@1.22.2"
+        }
+      ],
+      "status": "not_affected",
+      "justification": "vulnerable_code_not_present",
+      "impact_statement": "graphql-scalars 1.22.2 uses the bounded PhoneNumber pattern /^\\+[1-9]\\d{6,14}$/. The vulnerable nested pattern was introduced in 1.24.1. The advisory's affected-version metadata is broader than its technical analysis. Source: https://github.com/graphql-hive/graphql-scalars/blob/v1.22.2/src/scalars/PhoneNumber.ts . Advisory: https://github.com/graphql-hive/graphql-scalars/security/advisories/GHSA-x8rm-f576-gq67 . This statement applies only to version 1.22.2."
+    }
+  ]
+}
