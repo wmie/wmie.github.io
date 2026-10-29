@@ -20,7 +20,7 @@ concurrency:
 jobs:
   plan:
     name: Prepare checks
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 10
     permissions:
       contents: read
@@ -72,7 +72,7 @@ jobs:
     needs:
     - plan
     if: needs.plan.outputs.has_components == 'true'
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 30
     permissions:
       contents: read
@@ -147,7 +147,7 @@ jobs:
     name: JSON validation
     needs:
     - plan
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     permissions:
       contents: read
@@ -179,7 +179,7 @@ jobs:
     name: Secret scan (Gitleaks)
     needs:
     - plan
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     permissions:
       contents: read
@@ -215,7 +215,7 @@ jobs:
     - content
     - security
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 20
     permissions:
       contents: read
@@ -245,8 +245,10 @@ jobs:
     name: Refresh pull request status
     needs:
     - aggregate
-    if: always() && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
-    runs-on: ubuntu-latest
+    if: always() && (endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository
+      == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch')
+      && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))
+    runs-on: ubicloud-standard-2
     timeout-minutes: 3
     permissions:
       actions: write
@@ -255,7 +257,11 @@ jobs:
       env:
         GH_TOKEN: ${{ github.token }}
         GH_REPO: ${{ github.repository }}
-        WMIE_DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        WMIE_DEFAULT_BRANCH: ${{ (github.repository == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners'
+          || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch') && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA)
+          && github.ref_name || github.event.repository.default_branch }}
         WMIE_PR_NUMBER: ${{ inputs.pr_number }}
         WMIE_SOURCE_RUN: ${{ github.run_id }}
       run: gh workflow run wmie-governance.yml --ref "$WMIE_DEFAULT_BRANCH" -f pr_number="$WMIE_PR_NUMBER" -f source_run_id="$WMIE_SOURCE_RUN"
+env:
+  WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}

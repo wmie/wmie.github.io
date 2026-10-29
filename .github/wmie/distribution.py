@@ -23,13 +23,13 @@ from workflows import render
 SOURCE_REPOSITORY = 'wmie/.github'
 BRANCH = 'chore/wmie-agentic-update'
 MARKER = '.github/wmie/installation.json'
-# Alessio explicitly paused this client repository during the rollout.
-HOLDS = {'wmie/collaudo': 'Client rollout paused by Alessio.'}
+# Operational exclusions require explicit owner instructions.
+HOLDS = {}
 LEGACY = re.compile(r'wmie/\.github/\.github/workflows/agent-(?:issue|pr-review)\.yml@')
 COMMON = tuple('.github/wmie/' + p for p in (
     'agent-policy.md', 'authoring.py', 'baseline.py', 'ci.py', 'ci_filters.py', 'control.py', 'core.py', 'diagnostics.py', 'draft.py',
     'provider_ready.py', 'distribution.py', 'release.py', 'evidence.py', 'git_input.py', 'governance.py', 'merge.py', 'presentation.py', 'requirements.txt', 'review.py',
-    'tool-versions.json', 'workflows.py')) + (
+    'runner_migration.py', 'runner-migration.json', 'triage.openvex.json', 'tool-versions.json', 'workflows.py')) + (
     '.github/workflows/wmie-review.md', '.github/workflows/wmie-review.lock.yml', '.github/aw/actions-lock.json')
 
 
@@ -268,11 +268,17 @@ def instruction_changes(api, repository, commit, entries, source):
     return {'AGENTS.md': text} if text != original else {}
 
 
-def bundle(source, profile, branch, source_commit):
+def bundle(source, profile, branch, source_commit, repository=None):
     source = Path(source)
     files = {path: (source / path).read_text() for path in COMMON}
+    migration_path = '.github/wmie/runner-migration.json'
+    migration = json.loads(files[migration_path])
+    records = migration['repositories']
+    profile_line_width = records.get(repository, {}).get('profile_line_width', 100)
+    migration['repositories'] = {repository: records[repository]} if repository in records else {}
+    files[migration_path] = json.dumps(migration, indent=2, sort_keys=True) + '\n'
     with tempfile.TemporaryDirectory(prefix='wmie-render-') as temporary:
-        for name in render(temporary, branch, profile):
+        for name in render(temporary, branch, profile, profile_line_width=profile_line_width):
             path = '.github/workflows/' + name
             files[path] = (Path(temporary) / path).read_text()
         files['.github/wmie/ci-profile.json'] = (Path(temporary) / '.github/wmie/ci-profile.json').read_text()
@@ -298,9 +304,18 @@ def propose(api, meta, source, source_commit, *, dry_run=False, profile_override
             profile = validate_profile(copy.deepcopy(profile_override))
         else:
             profile = profile_for(api, repository, commit, entries, directory)
-        files = bundle(source, profile, branch, source_commit)
+        files = bundle(source, profile, branch, source_commit, repository=repository)
         files.update(legacy_changes(api, repository, commit, entries, directory))
         files.update(instruction_changes(api, repository, commit, entries, source))
+        bootstrap_runners = os.environ.get('WMIE_RUNNER_BOOTSTRAP') == 'true'
+        custom_runners = bootstrap_runners or os.environ.get('WMIE_RUNNER_CUSTOM') == 'true'
+        if custom_runners:
+            from runner_migration import approved_first_install, custom_changes
+            installed = MARKER in entries and (bootstrap_runners or json.loads(api.file(repository, MARKER, commit)).get('source_commit') == source_commit)
+            first_install = bootstrap_runners and approved_first_install(repository, commit, branch, entries)
+            require(installed or first_install,
+                    'migration_bundle_must_be_installed_first')
+            files.update(custom_changes(api, repository, commit))
     if MARKER in entries:
         previous_marker = api.file(repository, MARKER, commit).decode()
         previous = json.loads(previous_marker)
@@ -308,7 +323,7 @@ def propose(api, meta, source, source_commit, *, dry_run=False, profile_override
         if (previous.get('source_repository') == SOURCE_REPOSITORY
                 and previous.get('default_branch') == branch and previous.get('files') == desired['files']):
             files[MARKER] = previous_marker
-    update_branch = BRANCH + '-' + digest(json.loads(files[MARKER])['files'])[:12]
+    update_branch = BRANCH + '-' + digest(json.loads(files[MARKER])['files'])[:12] + ('-runners' if custom_runners else '')
     changes = {}
     for path, value in files.items():
         safe_path(path)
@@ -339,10 +354,11 @@ def propose(api, meta, source, source_commit, *, dry_run=False, profile_override
     write_json('wmie-distribution-writes/' + meta['name'] + '.json', {**result, 'head_sha': new['sha'], 'branch': update_branch})
     api.request('POST', f'/repos/{repository}/git/refs', {'ref': 'refs/heads/' + update_branch, 'sha': new['sha']})
     pr = api.request('POST', f'/repos/{repository}/pulls', {
-        'title': 'Update repository automation', 'head': update_branch, 'base': branch,
+        'title': 'ci: update repository automation', 'head': update_branch, 'base': branch,
         'body': 'Update the repository automation and project check configuration.\n\n'
                 'The bundle comes from ' + SOURCE_REPOSITORY + '@' + source_commit + '.\n'
-                'Application code and existing project CI remain unchanged. Legacy WMIE reviewer and issue-resolver callers are removed.\n\n'
+                'Application runtime behavior remains unchanged. Existing project checks remain required. '
+                'This release includes the approved runner selection and test infrastructure changes.\n\n'
                 '## Authorship\n\nAgent-authored: WMIE Sync. Authorized infrastructure update.\n\n'
                 + ('First installation requires the authorized owner bootstrap path.\n' if result['first_install'] else '')
                 + 'Subsequent PRs require complete code review approval and successful required checks.'})
@@ -369,12 +385,13 @@ def activation_rules():
         merger_ruleset(['~DEFAULT_BRANCH'])]
 
 
-def rules_match(actual, expected):
+def rules_match(actual, expected, *, check_bypass=True):
     if any(actual.get(key) != expected[key] for key in ('name', 'target', 'enforcement', 'conditions')):
         return False
-    actor = lambda value: (value['actor_type'], value.get('actor_id'), value['bypass_mode'])
-    if sorted(map(actor, actual.get('bypass_actors', []))) != sorted(map(actor, expected['bypass_actors'])):
-        return False
+    if check_bypass:
+        actor = lambda value: (value['actor_type'], value.get('actor_id'), value['bypass_mode'])
+        if sorted(map(actor, actual.get('bypass_actors', []))) != sorted(map(actor, expected['bypass_actors'])):
+            return False
     observed = {rule['type']: rule for rule in actual.get('rules', [])}
     if set(observed) != {rule['type'] for rule in expected['rules']}:
         return False
@@ -387,35 +404,50 @@ def rules_match(actual, expected):
     return True
 
 
+def verify_central_rules(api, meta):
+    repository, branch = meta['full_name'], meta['default_branch']
+    effective = api.pages(f'/repos/{repository}/rules/branches/{quote(branch, safe="")}')
+    candidates = {rule['ruleset_id'] for rule in effective
+                  if rule.get('ruleset_source_type') == 'Organization'
+                  and rule.get('ruleset_source') == 'wmie'
+                  and rule['type'] in {'pull_request', 'required_status_checks', 'update'}}
+    inherited = [api.request('GET', f'/repos/{repository}/rulesets/{rule_id}')
+                 for rule_id in sorted(candidates)]
+    approval, merger = activation_rules()
+    approval['name'] = 'main-branch-protection'
+    approval['rules'] = [{'type': name} for name in ('deletion', 'non_fast_forward', 'required_linear_history')] + approval['rules']
+    merger['name'] = 'Restrict default branch merges to owner and WMIE Agent'
+    verified, bypass_verification = [], {}
+    for expected in (approval, merger):
+        matches = [rule for rule in inherited if rule['name'] == expected['name']]
+        require(len(matches) == 1, 'central_rule_not_applicable', expected['name'])
+        actual = matches[0]
+        require(actual.get('source_type') == 'Organization' and actual.get('source') == 'wmie',
+                'central_rule_untrusted_source', expected['name'])
+        bypass_visible = 'bypass_actors' in actual
+        if bypass_visible:
+            require(isinstance(actual['bypass_actors'], list), 'central_rule_bypass_invalid', expected['name'])
+        # The branch endpoint establishes repository applicability. Compare branch
+        # targeting and protections separately from organization repository selectors.
+        observed = {**actual, 'conditions': {'ref_name': actual.get('conditions', {}).get('ref_name')}}
+        require(rules_match(observed, expected, check_bypass=bypass_visible),
+                'central_rule_mismatch', expected['name'])
+        verified.append(actual['id'])
+        bypass_verification[str(actual['id'])] = 'live' if bypass_visible else 'not_visible'
+    return {'branch': branch, 'ruleset_ids': verified, 'bypass_verification': bypass_verification}
+
+
 def activate(api, meta):
     from credential_environment import ensure_environment, provision_secrets
     repository = meta['full_name']
+    coverage = verify_central_rules(api, meta)
     environment = ensure_environment(api, repository, meta['default_branch'])
     provisioned = provision_secrets(api, repository, meta['default_branch'])
-    existing = api.pages(f'/repos/{repository}/rulesets?includes_parents=false')
-    before = []
     changed = environment['created'] or bool(provisioned['installed'])
-    for expected in activation_rules():
-        found = next((item for item in existing if item['name'] in {expected['name'], {'Require checks and code review': 'WMIE required review and CI', 'Restrict merge access': 'WMIE controlled merge'}.get(expected['name'])}), None)
-        if found:
-            actual = api.request('GET', f"/repos/{repository}/rulesets/{found['id']}")
-            before.append(actual)
-            if not rules_match(actual, expected):
-                api.request('PUT', f"/repos/{repository}/rulesets/{found['id']}", expected)
-                changed = True
-            path = f"/repos/{repository}/rulesets/{found['id']}"
-        else:
-            created = api.request('POST', f'/repos/{repository}/rulesets', expected)
-            changed = True
-            path = f"/repos/{repository}/rulesets/{created['id']}"
-        actual = api.request('GET', path)
-        require(actual['enforcement'] == 'active', 'activation_rule_not_active')
-        require(rules_match(actual, expected),
-                'activation_rule_readback_mismatch', expected['name'])
     if changed:
         api.request('POST', f'/repos/{repository}/dispatches', {'event_type': 'wmie-reconcile'})
     return {'repository': repository, 'state': 'active', 'reconciliation_dispatched': changed, 'environment_created': environment['created'],
-            'credentials': provisioned, 'rules_before': before}
+            'credentials': provisioned, 'central_rules': coverage}
 
 
 def main():
@@ -425,17 +457,25 @@ def main():
     source = Path(os.environ.get('GITHUB_WORKSPACE', '.'))
     source_commit = sha(os.environ['GITHUB_SHA'])
     dry_run = os.environ.get('WMIE_DISTRIBUTION_APPLY') != 'true'
+    verify_only = os.environ.get('WMIE_VERIFY_RULES_ONLY') == 'true'
     selected = os.environ.get('WMIE_TARGET_REPOSITORY', '').strip()
     require(not selected or re.fullmatch(r'[A-Za-z0-9_.-]+', selected), 'invalid_distribution_target')
     api = GitHub()
     results = []
-    targets = [meta for meta in repositories(api) if not selected or meta['name'] == selected]
+    available = repositories(api)
+    if verify_only:
+        available.append(api.request('GET', f'/repos/{SOURCE_REPOSITORY}'))
+    targets = [meta for meta in available if not selected or meta['name'] == selected]
     def update(meta):
         target_api = GitHub(api.token)
         try:
-            result = propose(target_api, meta, source, source_commit, dry_run=dry_run)
-            if result['state'] == 'current' and not dry_run:
-                result = activate(target_api, meta)
+            if verify_only:
+                result = {'repository': meta['full_name'], 'state': 'rules_verified',
+                          'central_rules': verify_central_rules(target_api, meta)}
+            else:
+                result = propose(target_api, meta, source, source_commit, dry_run=dry_run)
+                if result['state'] == 'current' and not dry_run:
+                    result = activate(target_api, meta)
         except GovernanceError as error:
             result = {'repository': meta['full_name'], 'state': 'blocked', 'code': error.code, 'detail': error.detail}
         return result

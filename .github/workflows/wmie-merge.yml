@@ -16,9 +16,11 @@ concurrency:
   queue: max
 jobs:
   merge:
-    if: endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    if: (endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch)) || (github.repository
+      == 'wmie/.github' && (github.ref == 'refs/heads/chore/ubicloud-runners' || github.ref == 'refs/heads/fix/ubicloud-replica-dispatch')
+      && github.sha == vars.WMIE_UBICLOUD_BOOTSTRAP_SHA))
     environment: wmie-review
-    runs-on: ubuntu-latest
+    runs-on: ubicloud-standard-2
     timeout-minutes: 15
     permissions:
       contents: read
@@ -74,3 +76,5 @@ jobs:
         path: wmie-merge-result.json
         if-no-files-found: ignore
         retention-days: 30
+env:
+  WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}
