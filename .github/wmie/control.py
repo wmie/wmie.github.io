@@ -119,6 +119,7 @@ def external_ci(api, repository, pr, checks):
     paths = changed_paths(api, repository, pr) if any(c.get('filters') for c in checks) else set()
     expected_checks = []
     verified_workflows = set()
+    trusted_workflows = {}
     source_runs = {}
     runs = api.pages(f"/repos/{repository}/commits/{pr['head']['sha']}/check-runs?filter=all", "check_runs")
     for expected in checks:
@@ -129,12 +130,24 @@ def external_ci(api, repository, pr, checks):
             require(original == proposed or authorized_change(repository, expected['workflow'], original, proposed),
                     'external_workflow_changed', expected['workflow'])
             verified_workflows.add(expected['workflow'])
+            trusted_workflows[expected['workflow']] = original
         applies, reason = applicable(expected, pr['base'].get('ref', ''), paths)
         expected_checks.append({**expected, 'applicable': applies, **({'reason': reason} if reason else {})})
         if not applies:
             observations.append({'id': expected['id'], 'conclusion': 'not_applicable', 'reason': reason})
             continue
         name = expected["name"]
+        if name.endswith(' ()'):
+            from runner_migration import workflow
+            parts = expected['id'].split(':')
+            if (len(parts) == 4 and parts[0] == 'existing'
+                    and parts[1] == Path(expected['workflow']).name and parts[3].isdecimal()):
+                job = workflow(trusted_workflows[expected['workflow']]).get('jobs', {}).get(parts[2], {})
+                matrix = job.get('strategy', {}).get('matrix', {})
+                if (name == parts[2] + ' ()' and 'name' not in job and isinstance(matrix, dict) and len(matrix) == 1
+                        and isinstance(next(iter(matrix.values())), list)
+                        and '' in next(iter(matrix.values()))):
+                    name = parts[2]
         candidates = []
         for check in runs:
             if check.get("name") != name or check.get("app", {}).get("id") != expected.get("app_id", 15368):
@@ -159,7 +172,10 @@ def external_ci(api, repository, pr, checks):
         if (expected.get('condition') or expected.get('agent_condition')) and actual:
             if expected.get('agent_condition'):
                 condition = expected['agent_condition']
-                context = {'wmie_agent_authored': 'true' if agent_authored(pr) else 'false'}
+                from runner_migration import maintenance_agent_exclusion
+                authored = agent_authored(pr) and not maintenance_agent_exclusion(
+                    pr, trusted_workflows[expected['workflow']], expected['name'])
+                context = {'wmie_agent_authored': 'true' if authored else 'false'}
                 result = pr_condition(condition, context)
             else:
                 actor = source_runs[actual['id']].get('actor', {}).get('login')

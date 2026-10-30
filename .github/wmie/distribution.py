@@ -102,7 +102,9 @@ def job_names(job_id, job):
             expanded = re.sub(r'\$\{\{\s*matrix\.' + re.escape(key) + r'\s*\}\}', str(value), expanded)
         require('${{' not in expanded, 'dynamic_ci_job_name', name)
         if expanded == name and '${{' not in name:
-            expanded += ' (' + ', '.join(map(str, values)) + ')'
+            suffix = ', '.join(map(str, values))
+            if suffix:
+                expanded += ' (' + suffix + ')'
         output.append(expanded)
     return output
 
@@ -315,7 +317,7 @@ def propose(api, meta, source, source_commit, *, dry_run=False, profile_override
             first_install = bootstrap_runners and approved_first_install(repository, commit, branch, entries)
             require(installed or first_install,
                     'migration_bundle_must_be_installed_first')
-            files.update(custom_changes(api, repository, commit))
+            files.update(custom_changes(api, repository, commit, entries=entries))
     if MARKER in entries:
         previous_marker = api.file(repository, MARKER, commit).decode()
         previous = json.loads(previous_marker)
@@ -349,15 +351,19 @@ def propose(api, meta, source, source_commit, *, dry_run=False, profile_override
         {'path': path, 'mode': '100644', 'type': 'blob', **({'sha': None} if value is None else {'content': value})}
         for path, value in changes.items()]})
     new = api.request('POST', f'/repos/{repository}/git/commits', {
-        'message': 'Update repository automation', 'tree': tree['sha'], 'parents': [commit]})
+        'message': 'ci: update repository automation', 'tree': tree['sha'], 'parents': [commit]})
     # Persist the expected write locally before creating the remote reference.
     write_json('wmie-distribution-writes/' + meta['name'] + '.json', {**result, 'head_sha': new['sha'], 'branch': update_branch})
     api.request('POST', f'/repos/{repository}/git/refs', {'ref': 'refs/heads/' + update_branch, 'sha': new['sha']})
+    repair_paths = json.loads(files['.github/wmie/runner-migration.json'])['repositories'].get(repository, {}).get('project_repairs', {})
+    project_note = ('This release includes exact project repairs from the reviewed central source. '
+                    if custom_runners and any(path in changes for path in repair_paths)
+                    else 'Application runtime behavior remains unchanged. ')
     pr = api.request('POST', f'/repos/{repository}/pulls', {
         'title': 'ci: update repository automation', 'head': update_branch, 'base': branch,
         'body': 'Update the repository automation and project check configuration.\n\n'
                 'The bundle comes from ' + SOURCE_REPOSITORY + '@' + source_commit + '.\n'
-                'Application runtime behavior remains unchanged. Existing project checks remain required. '
+                + project_note + 'Existing project checks remain required. '
                 'This release includes the approved runner selection and test infrastructure changes.\n\n'
                 '## Authorship\n\nAgent-authored: WMIE Sync. Authorized infrastructure update.\n\n'
                 + ('First installation requires the authorized owner bootstrap path.\n' if result['first_install'] else '')
