@@ -106,11 +106,16 @@ def release_approval(api, write_api, repository, pr, ci, *, verify_only=False):
     if verify_only:
         return {'source_commit': commit, 'source_review_id': approval['review_id'],
                 'base_sha': base, 'head_sha': head, 'repository': repository}
-    body = (f"Automation release verified\n\n"
+    repaired_paths = verified_project_repairs(repository, pr['head']['ref'], expected_files, head_entries)
+    heading = 'Migration release and project repairs verified' if repaired_paths else 'Automation release verified'
+    repair_note = ('\nProject repairs: ' + ', '.join(repaired_paths) + '\n') if repaired_paths else ''
+    explanation = ('The automation files and exact project repairs match the reviewed central release. '
+                   if repaired_paths else 'The automation files match the reviewed central release. ')
+    body = (f"{heading}\n\n"
             f"Source: {SOURCE_REPOSITORY}@{commit}\n"
             f"Central review: https://github.com/{SOURCE_REPOSITORY}/pull/{source_pr['number']}#pullrequestreview-{approval['review_id']}\n"
-            f"Target base: {base}\nTarget commit: {head}\n\n"
-            "The automation files match the reviewed central release. This is a deterministic copy verification, not a new AI analysis.")
+            f"Target base: {base}\nTarget commit: {head}\n{repair_note}\n"
+            f"{explanation}This is a deterministic copy verification, not a new AI analysis.")
     reviews = api.pages(f"/repos/{repository}/pulls/{pr['number']}/reviews")
     current = [review for review in reviews if review.get('user', {}).get('id') == BOT_ID
                and review.get('commit_id') == head]
@@ -137,6 +142,18 @@ def release_approval(api, write_api, repository, pr, ci, *, verify_only=False):
             'source_review_run_id': approval['run_id'], 'approval_kind': 'verified_automation_release'}
 
 
+def verified_project_repairs(repository, branch, expected_files, head_entries):
+    if not branch.endswith('-runners'):
+        return []
+    from runner_migration import project_repair_records
+    records = project_repair_records(repository, json.loads(expected_files['.github/wmie/runner-migration.json']))
+    for path, record in records.items():
+        actual = head_entries.get(path, {})
+        require(actual.get('type') == 'blob' and actual.get('mode') == '100644'
+                and actual.get('sha') == record['after_blob'], 'release_project_repair_mismatch', path)
+    return sorted(records)
+
+
 # A fresh interpreter imports only the generator from the reviewed source tree.
 # Target files are immutable data. No API credentials enter this process.
 _GENERATE = r"""
@@ -159,7 +176,7 @@ with tempfile.TemporaryDirectory() as scratch:
     files.update(instruction_changes(api, request['repository'], request['base'], request['entries'], root))
     if request.get('custom_runners'):
         from runner_migration import custom_changes
-        files.update(custom_changes(api, request['repository'], request['base']))
+        files.update(custom_changes(api, request['repository'], request['base'], entries=request['entries']))
     print(json.dumps(files))
 """
 
@@ -205,13 +222,17 @@ def reviewed_bundle(source_api, target_api, commit, repository, pr, profile, ent
             target = source / path
             target.parent.mkdir(parents=True, exist_ok=True)
             target.write_bytes(git(objects, 'cat-file', 'blob', oid))
-        from runner_migration import test_repair_records
+        from runner_migration import test_repair_records, project_repair_records
         migration_path = source / '.github/wmie/runner-migration.json'
         custom_runners = pr.get('head', {}).get('ref', '').endswith('-runners')
         repairs = test_repair_records(repository, json.loads(migration_path.read_text())
                                       if migration_path.is_file() else {'repositories': {}}) if custom_runners else {}
         repair_paths = set(repairs) | {path for record in repairs.values() for path in record.get('context', {})}
         require(repair_paths <= entries.keys(), 'migration_test_file_missing')
+        project_repairs = project_repair_records(repository, json.loads(migration_path.read_text())) if custom_runners else {}
+        require({path for path, record in project_repairs.items() if record['before_blob'] is not None} <= entries.keys(),
+                'migration_project_file_missing')
+        repair_paths.update(project_repairs)
         for path, entry in entries.items():
             if path in repair_paths or path == 'AGENTS.md' or (path.startswith('.github/workflows/') and path.endswith(('.yml', '.yaml'))):
                 require(entry.get('mode') in {'100644', '100755'}, 'release_snapshot_file_mode', path)

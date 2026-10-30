@@ -127,8 +127,49 @@ def bind_inference_environment(path):
     path.write_text(text)
 
 
+def bind_pi_openrouter_model(path):
+    """Preserve OpenRouter's full model slug through gh-aw v0.93.4's Pi adapter."""
+    path = Path(path)
+    before = yaml_data(path)
+    expected = copy.deepcopy(before)
+    model = 'deepseek/deepseek-v4.1-flash-1017'
+    short = model.split('/', 1)[1]
+    steps = expected['jobs']['agent']['steps']
+    candidates = [s for s in steps if s.get('name') == 'Execute Pi CLI']
+    require(len(candidates) == 1, 'pi_model_binding_ambiguous')
+    step = candidates[0]
+    replacements = {
+        '--model aw-gateway/' + short: '--model aw-gateway/' + model,
+        'export GH_AW_PI_MODEL_ID=' + short: 'export GH_AW_PI_MODEL_ID=' + model,
+    }
+    complete = all(value in step['run'] for value in replacements.values())
+    if complete:
+        require(step['env']['GH_AW_PI_MODEL'] == 'openai/' + model
+                and step['env']['GH_AW_PI_NATIVE_PROVIDER'] == 'openrouter', 'pi_model_binding_ambiguous')
+        return
+    require(step['env']['GH_AW_PI_MODEL'] == model
+            and step['env']['GH_AW_PI_NATIVE_PROVIDER'] == 'deepseek', 'pi_model_binding_ambiguous')
+    text = path.read_text()
+    for old, new in replacements.items():
+        require(step['run'].count(old) == 1 and text.count(old) == 1, 'pi_model_binding_ambiguous')
+        step['run'] = step['run'].replace(old, new)
+        text = text.replace(old, new)
+    for name, old, new in (('GH_AW_PI_MODEL', model, 'openai/' + model),
+                           ('GH_AW_PI_NATIVE_PROVIDER', 'deepseek', 'openrouter')):
+        pattern = r'(?m)(^\s+' + name + r': )' + r'"?' + re.escape(old) + r'"?$'
+        text, count = re.subn(pattern, lambda match: match[1] + '"' + new + '"', text)
+        require(count == 1, 'pi_model_binding_ambiguous')
+        step['env'][name] = new
+    with tempfile.TemporaryDirectory() as directory:
+        candidate = Path(directory) / 'review.yml'
+        candidate.write_text(text)
+        require(yaml_data(candidate) == expected, 'pi_model_binding_changed_behavior')
+    path.write_text(text)
+
+
 if __name__ == "__main__":
     label_review_jobs(".github/workflows/wmie-review.lock.yml")
     wire_review_publication(".github/workflows/wmie-review.lock.yml")
 
     bind_inference_environment(".github/workflows/wmie-review.lock.yml")
+    bind_pi_openrouter_model(".github/workflows/wmie-review.lock.yml")

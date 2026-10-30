@@ -34,23 +34,24 @@ permissions:
 env:
   WMIE_UBICLOUD_BOOTSTRAP_SHA: ${{ vars.WMIE_UBICLOUD_BOOTSTRAP_SHA }}
 engine:
-  id: codex
+  id: pi
   model: deepseek/deepseek-v4.1-flash-1017
-  version: "0.164.0"
+  model-provider: openai
+  version: "1.3.0"
+  bare: true
   env:
     OPENAI_BASE_URL: https://openrouter.ai/api/v1
     OPENAI_API_KEY: ${{ secrets.WMIE_AGENT_OPENROUTER_API_KEY }}
     GH_AW_HARNESS_STARTUP_RETRIES: "0"
-  harness:
-    max-retries: 0
   config: |
-    model_reasoning_effort = "high"
-    model_reasoning_summary = "none"
-    [features]
-    multi_agent = false
-    [model_providers."openai-proxy"]
-    request_max_retries = 0
-    stream_max_retries = 0
+    {
+      "model": {"api": "openai-completions", "reasoning": true, "input": ["text"], "contextWindow": 1048576, "maxTokens": 393216, "compat": {"thinkingFormat": "openrouter", "supportsDeveloperRole": false, "supportsStore": false}},
+      "settings": {
+        "defaultThinkingLevel": "high",
+        "cacheWarming": "off",
+        "retry": {"enabled": false, "maxRetries": 0, "provider": {"maxRetries": 0}}
+      }
+    }
 models:
   providers:
     openai:
