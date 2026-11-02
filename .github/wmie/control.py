@@ -87,13 +87,14 @@ def source_filter(pr):
     return filters
 
 
-def current_plan(api, repository, pr, *, source=None):
+def current_plan(api, repository, pr, *, source=None, objects=None):
     profile = profile_at(api, repository, pr["base"]["sha"])
     if source is not None:
         return profile, plan(profile, discover(source))
     with tempfile.TemporaryDirectory(prefix="wmie-plan-") as directory:
         root = Path(directory)
-        objects = fetch(repository, pr["base"]["sha"], pr["head"]["sha"], root / "objects", api.token)
+        if objects is None:
+            objects = fetch(repository, pr["base"]["sha"], pr["head"]["sha"], root / "objects", api.token)
         inputs = discovery_tree(objects, pr["head"]["sha"], root / "manifests", api.token)
         return profile, plan(profile, discover(inputs))
 
@@ -119,6 +120,7 @@ def external_ci(api, repository, pr, checks):
     paths = changed_paths(api, repository, pr) if any(c.get('filters') for c in checks) else set()
     expected_checks = []
     verified_workflows = set()
+    trusted_workflows = {}
     source_runs = {}
     runs = api.pages(f"/repos/{repository}/commits/{pr['head']['sha']}/check-runs?filter=all", "check_runs")
     for expected in checks:
@@ -129,12 +131,24 @@ def external_ci(api, repository, pr, checks):
             require(original == proposed or authorized_change(repository, expected['workflow'], original, proposed),
                     'external_workflow_changed', expected['workflow'])
             verified_workflows.add(expected['workflow'])
+            trusted_workflows[expected['workflow']] = original
         applies, reason = applicable(expected, pr['base'].get('ref', ''), paths)
         expected_checks.append({**expected, 'applicable': applies, **({'reason': reason} if reason else {})})
         if not applies:
             observations.append({'id': expected['id'], 'conclusion': 'not_applicable', 'reason': reason})
             continue
         name = expected["name"]
+        if name.endswith(' ()'):
+            from runner_migration import workflow
+            parts = expected['id'].split(':')
+            if (len(parts) == 4 and parts[0] == 'existing'
+                    and parts[1] == Path(expected['workflow']).name and parts[3].isdecimal()):
+                job = workflow(trusted_workflows[expected['workflow']]).get('jobs', {}).get(parts[2], {})
+                matrix = job.get('strategy', {}).get('matrix', {})
+                if (name == parts[2] + ' ()' and 'name' not in job and isinstance(matrix, dict) and len(matrix) == 1
+                        and isinstance(next(iter(matrix.values())), list)
+                        and '' in next(iter(matrix.values()))):
+                    name = parts[2]
         candidates = []
         for check in runs:
             if check.get("name") != name or check.get("app", {}).get("id") != expected.get("app_id", 15368):
@@ -159,7 +173,10 @@ def external_ci(api, repository, pr, checks):
         if (expected.get('condition') or expected.get('agent_condition')) and actual:
             if expected.get('agent_condition'):
                 condition = expected['agent_condition']
-                context = {'wmie_agent_authored': 'true' if agent_authored(pr) else 'false'}
+                from runner_migration import maintenance_agent_exclusion
+                authored = agent_authored(pr) and not maintenance_agent_exclusion(
+                    pr, trusted_workflows[expected['workflow']], expected['name'])
+                context = {'wmie_agent_authored': 'true' if authored else 'false'}
                 result = pr_condition(condition, context)
             else:
                 actor = source_runs[actual['id']].get('actor', {}).get('login')
@@ -177,9 +194,9 @@ def external_ci(api, repository, pr, checks):
     return observations
 
 
-def ci_evidence(api, repository, pr, *, ci_run_id=None):
+def ci_evidence(api, repository, pr, *, ci_run_id=None, objects=None):
     run = trusted_run(api, repository, ci_run_id or latest_ci(api, repository, pr), CI_WORKFLOW, events={"workflow_dispatch"})
-    profile, planned = current_plan(api, repository, pr)
+    profile, planned = current_plan(api, repository, pr, objects=objects)
     jobs = run_jobs(api, repository, run)
     validate_ci_run(run, pr, planned, jobs)
     external = external_ci(api, repository, pr, profile.get("external_checks", []))
@@ -216,6 +233,24 @@ def previous_analysis(api, repository, pr, current_run_id):
     return None
 
 
+def pinned_tree_sizes(api, repository, commits):
+    """Read immutable blob sizes before a partial clone transfers context."""
+    sizes = {}
+    for commit in dict.fromkeys(sha(value) for value in commits):
+        tree = api.request('GET', f'/repos/{repository}/git/trees/{commit}?recursive=1')
+        require(isinstance(tree, dict) and isinstance(tree.get('tree'), list)
+                and type(tree.get('truncated')) is bool, 'review_tree_metadata_invalid')
+        sizes[commit] = {}
+        for entry in tree['tree']:
+            require(isinstance(entry, dict), 'review_tree_metadata_invalid')
+            if entry.get('type') == 'blob' and type(entry.get('size')) is int and entry['size'] >= 0:
+                path = safe_path(entry.get('path'))
+                require(path not in sizes[commit], 'review_tree_metadata_duplicate')
+                sizes[commit][path] = entry['size']
+    # Truncated or size-less entries stay unknown and are not prefetched.
+    return sizes
+
+
 def review_prepare(api, repository, event):
     current_run_id = number(os.environ["GITHUB_RUN_ID"])
     run = trusted_run(api, repository, current_run_id, REVIEW_WORKFLOW, events={"workflow_run", "workflow_dispatch"})
@@ -238,21 +273,22 @@ def review_prepare(api, repository, event):
     if pr["base"].get("ref") == pr["base"].get("repo", {}).get("default_branch"):
         require(source_matches_pr(run, pr), "review_source_base_changed",
                 "Start a review from the current default branch before admitting inference.")
-    evidence = ci_evidence(api, repository, pr, ci_run_id=source_run_id)
-    repeat = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and str(event.get("inputs", {}).get("repeat_review", "false")).lower() == "true"
-    previous = previous_analysis(api, repository, pr, current_run_id)
-    if previous and not repeat:
-        output("ready", "false")
-        return {"state": "analysis_already_admitted", "previous_run_id": previous,
-                "action": "Read the previous result. Use an explicit manual review to authorize another analysis."}
-    origin = {"run_id": run["id"], "run_attempt": run["run_attempt"], "workflow_sha": sha(os.environ["WMIE_WORKFLOW_SHA"]),
-              "workflow_path": REVIEW_WORKFLOW, "presentation_version": 1}
-    require(origin["workflow_sha"] == run["head_sha"], "workflow_source_mismatch")
-    destination = Path("wmie-input")
-    require(not destination.exists(), "review_input_directory_exists")
     with tempfile.TemporaryDirectory(prefix="wmie-review-") as temporary:
         objects = fetch(repository, pr["base"]["sha"], pr["head"]["sha"], Path(temporary) / "objects", api.token)
-        manifest = snapshot(objects, repository, pr_number, pr["base"]["sha"], pr["head"]["sha"], destination / "source", api.token)
+        evidence = ci_evidence(api, repository, pr, ci_run_id=source_run_id, objects=objects)
+        repeat = os.environ["GITHUB_EVENT_NAME"] == "workflow_dispatch" and str(event.get("inputs", {}).get("repeat_review", "false")).lower() == "true"
+        previous = previous_analysis(api, repository, pr, current_run_id)
+        if previous and not repeat:
+            output("ready", "false")
+            return {"state": "analysis_already_admitted", "previous_run_id": previous,
+                    "action": "Read the previous result. Use an explicit manual review to authorize another analysis."}
+        origin = {"run_id": run["id"], "run_attempt": run["run_attempt"], "workflow_sha": sha(os.environ["WMIE_WORKFLOW_SHA"]),
+                  "workflow_path": REVIEW_WORKFLOW, "presentation_version": 1}
+        require(origin["workflow_sha"] == run["head_sha"], "workflow_source_mismatch")
+        destination = Path("wmie-input")
+        require(not destination.exists(), "review_input_directory_exists")
+        manifest = snapshot(objects, repository, pr_number, pr["base"]["sha"], pr["head"]["sha"], destination / "source", api.token,
+                            prepare_context=True, tree_sizes=pinned_tree_sizes(api, repository, [pr['base']['sha'], pr['head']['sha']]))
     manifest["provenance"] = origin
     validate_manifest(manifest, repository, pr_number, pr["base"]["sha"], pr["head"]["sha"])
     binding = {"schema_version": 1, "repository": repository, "pr_number": pr_number,

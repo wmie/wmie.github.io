@@ -136,8 +136,9 @@ def published_comments(api, repository, pr_number, review_id):
     require(all(type(value) is int and value > 0 for value in ids) and len(set(ids)) == len(ids),
             "published_comment_identifiers_invalid")
     result = []
-    for comment_id in ids:
-        comment = api.request("GET", f"/repos/{repository}/pulls/comments/{comment_id}")
+    fields = {"id", "pull_request_review_id", "body", "path", "commit_id", "user", "line", "side"}
+    for entry, comment_id in zip(entries, ids):
+        comment = entry if fields <= entry.keys() else api.request("GET", f"/repos/{repository}/pulls/comments/{comment_id}")
         require(comment.get("id") == comment_id and comment.get("pull_request_review_id") == review_id,
                 "published_comment_binding_mismatch")
         result.append(comment)
