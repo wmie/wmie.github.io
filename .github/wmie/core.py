@@ -77,6 +77,7 @@ class GitHub:
     def __init__(self, token=None, opener=None):
         self.token = token if token is not None else os.environ.get("GH_TOKEN", "")
         self.opener = opener or urllib.request.build_opener(NoRedirect())
+        self._commit_files = {}
 
     def request(self, method, endpoint, body=None, raw=False):
         require(endpoint.startswith("/") and not endpoint.startswith("//"), "invalid_api_path")
@@ -112,6 +113,10 @@ class GitHub:
 
     def file(self, repository, path, ref):
         safe_path(path)
+        key = (repository, path, ref)
+        immutable = isinstance(ref, str) and re.fullmatch(r"[0-9a-f]{40}", ref) is not None
+        if immutable and key in self._commit_files:
+            return self._commit_files[key]
         data = self.request("GET", f"/repos/{repository}/contents/{urllib.parse.quote(path, safe='/')}?ref={urllib.parse.quote(ref, safe='')}")
         require(data.get("type") == "file" and data.get("encoding") == "base64", "github_file_incomplete", path)
         try:
@@ -119,6 +124,8 @@ class GitHub:
         except (ValueError, KeyError) as error:
             raise GovernanceError("github_file_incomplete", path) from error
         require(len(content) == data.get("size"), "github_file_incomplete", path)
+        if immutable:
+            self._commit_files[key] = content
         return content
 
     def archive(self, endpoint, *, maximum_bytes=32 * 1024 * 1024):
