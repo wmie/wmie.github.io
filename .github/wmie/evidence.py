@@ -14,6 +14,7 @@ from presentation import ARTIFACT, review_reference, validate_publication
 
 CI_WORKFLOW = ".github/workflows/wmie-ci.yml"
 REVIEW_WORKFLOW = ".github/workflows/wmie-review.lock.yml"
+SINGLE_REVIEW_WORKFLOW = '.github/workflows/wmie-review-single.yml'
 
 
 def canonical_run_title(title):
@@ -136,8 +137,9 @@ def published_comments(api, repository, pr_number, review_id):
     require(all(type(value) is int and value > 0 for value in ids) and len(set(ids)) == len(ids),
             "published_comment_identifiers_invalid")
     result = []
-    for comment_id in ids:
-        comment = api.request("GET", f"/repos/{repository}/pulls/comments/{comment_id}")
+    fields = {"id", "pull_request_review_id", "body", "path", "commit_id", "user", "line", "side"}
+    for entry, comment_id in zip(entries, ids):
+        comment = entry if fields <= entry.keys() else api.request("GET", f"/repos/{repository}/pulls/comments/{comment_id}")
         require(comment.get("id") == comment_id and comment.get("pull_request_review_id") == review_id,
                 "published_comment_binding_mismatch")
         result.append(comment)
@@ -164,6 +166,22 @@ def native_review_evidence(api, repository, run, manifest, review):
     return record
 
 
+def single_review_evidence(api, repository, run, binding, review):
+    """Read the new execution protocol without synthesizing native gh-aw evidence."""
+    from single_pipeline import validate_single_publication
+    require(run.get('path', '').split('@', 1)[0] == SINGLE_REVIEW_WORKFLOW, 'single_workflow_mismatch')
+    result_name = f"wmie-single-result-{run['id']}-{run['run_attempt']}"
+    actual_binding, package, record, execution = [artifact_record(api, repository, run, result_name, member + '.json')
+                                                for member in ('binding', 'package', 'review', 'execution')]
+    require(actual_binding == binding, 'single_result_binding_mismatch')
+    publication = artifact_record(api, repository, run,
+                                  f"wmie-single-publication-{run['id']}-{run['run_attempt']}", 'publication.json')
+    comments = published_comments(api, repository, binding['pr_number'], review['id'])
+    files = api.pages(f"/repos/{repository}/pulls/{binding['pr_number']}/files") if record.get('findings') else []
+    validate_single_publication(publication, binding, package, record, execution, review, comments, files=files)
+    return record
+
+
 def validate_ci_run(run, pr, plan, jobs):
     require(canonical_run_title(run.get("display_title")) == ci_title(pr["number"], pr["base"]["sha"], pr["head"]["sha"]),
             "ci_commit_binding_mismatch")
@@ -178,7 +196,8 @@ def validate_ci_run(run, pr, plan, jobs):
     return True
 
 
-def validate_input_record(record, run, pr, *, workflow_sha=None):
+def validate_input_record(record, run, pr, *, workflow_sha=None, workflow=REVIEW_WORKFLOW):
+    require(isinstance(workflow, str) and workflow in {REVIEW_WORKFLOW, SINGLE_REVIEW_WORKFLOW}, 'input_workflow_not_allowed')
     require(record.get("schema_version") == 1, "input_version")
     validate_manifest(record.get("manifest", {}), run["repository"]["full_name"], pr["number"],
                       pr["base"]["sha"], pr["head"]["sha"])
@@ -187,7 +206,10 @@ def validate_input_record(record, run, pr, *, workflow_sha=None):
     require(origin.get("run_id") == run["id"] and origin.get("run_attempt") == run["run_attempt"],
             "input_run_mismatch")
     require(origin.get("workflow_sha") == (workflow_sha or run["head_sha"]), "input_workflow_sha_mismatch")
-    require(origin.get("workflow_path") == REVIEW_WORKFLOW, "input_workflow_path_mismatch")
+    require(origin.get("workflow_path") == workflow, "input_workflow_path_mismatch")
+    if workflow == SINGLE_REVIEW_WORKFLOW:
+        require(run.get('path', '').split('@', 1)[0] == workflow, 'input_workflow_path_mismatch')
+        require(run.get('head_sha') == pr['base']['sha'], 'single_review_source_base_changed')
     require(record.get("manifest_sha256") == digest(record["manifest"]), "input_manifest_mismatch")
     require(record["manifest"].get("provenance") == origin, "manifest_provenance_mismatch")
     return record

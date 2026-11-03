@@ -40,10 +40,23 @@ def published_approval(api, repository, pr, ci, *, merged_source_commit=None):
         require(review.get("state") != "COMMENTED", "analysis_incomplete", f"Read code review {review['id']}.")
     require(record.get("verdict") != "changes_requested", "application_findings", f"Read WMIE review {review['id']}.")
     require(record.get("verdict") != "incomplete", "analysis_incomplete", f"Read WMIE review {review['id']}.")
-    run = trusted_run(api, repository, number(record.get("review_run_id")), REVIEW_WORKFLOW,
-                      events={"workflow_run", "workflow_dispatch"})
+    try:
+        run = trusted_run(api, repository, number(record.get("review_run_id")), REVIEW_WORKFLOW,
+                          events={"workflow_run", "workflow_dispatch"})
+    except GovernanceError as error:
+        # Only an actual producer-path mismatch may select the other explicit
+        # protocol. Trust failures never cause a fallback or weaker evidence.
+        if error.code != 'run_workflow_mismatch':
+            raise
+        from evidence import SINGLE_REVIEW_WORKFLOW
+        run = trusted_run(api, repository, number(record.get('review_run_id')), SINGLE_REVIEW_WORKFLOW,
+                          events={'workflow_dispatch'})
     require(run.get("status") == "completed" and run.get("conclusion") == "success", "review_execution_incomplete")
     require(run["run_attempt"] == record.get("review_run_attempt"), "review_attempt_superseded")
+    from evidence import SINGLE_REVIEW_WORKFLOW
+    if run.get('path', '').split('@', 1)[0] == SINGLE_REVIEW_WORKFLOW:
+        return single_published_approval(api, repository, pr, ci, run, review,
+                                         merged_source_commit=merged_source_commit)
     binding = validate_input_record(binding_for_run(api, repository, run), run, pr)
     require(binding.get("ci", {}).get("profile_sha256") == ci["profile_sha256"]
             and binding["ci"].get("plan_sha256") == ci["plan_sha256"], "published_ci_plan_mismatch")
@@ -58,6 +71,34 @@ def published_approval(api, repository, pr, ci, *, merged_source_commit=None):
     return {"review_id": review["id"], "run_id": run["id"], "run_attempt": run["run_attempt"],
             "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"],
             **({"reviewed_base_sha": binding["manifest"]["merge_base_sha"]} if merged_source_commit else {})}
+
+
+def single_published_approval(api, repository, pr, ci, run, review, *, merged_source_commit=None):
+    """Compatibility reader for an explicitly enabled, immutable new producer."""
+    from evidence import artifact_record, SINGLE_REVIEW_WORKFLOW, single_review_evidence
+    from single_pipeline import publication_policy
+    require(merged_source_commit is None, 'single_merged_release_history_unavailable')
+    require(pr.get('state') == 'open' and not pr.get('draft'), 'pr_not_ready')
+    default = pr.get('base', {}).get('repo', {}).get('default_branch')
+    require(isinstance(default, str) and default and run.get('head_branch') == default,
+            'single_default_branch_required')
+    binding = artifact_record(api, repository, run,
+                              f"wmie-single-input-{run['id']}-{run['run_attempt']}", 'binding.json')
+    validate_input_record(binding, run, pr, workflow=SINGLE_REVIEW_WORKFLOW)
+    publication_policy(api, binding)
+    require(binding.get('ci', {}).get('profile_sha256') == ci['profile_sha256']
+            and binding['ci'].get('plan_sha256') == ci['plan_sha256'], 'published_ci_plan_mismatch')
+    jobs = run_jobs(api, repository, run)
+    require(all(jobs.get(name, {}).get('conclusion') == 'success' for name in (
+        'Single-call review input', 'Single-call review analysis', 'Publish single-call review')), 'review_jobs_incomplete')
+    original_record = single_review_evidence(api, repository, run, binding, review)
+    require(original_record.get('complete') is True and original_record.get('verdict') == 'approve', 'review_not_approval')
+    require(review.get('state') == 'APPROVED', 'approval_not_published')
+    reference = review_reference(review.get('body'), repository)
+    require(reference and all(reference[field] == original_record[field] for field in reference),
+            'published_record_mismatch')
+    return {'review_id': review['id'], 'run_id': run['id'], 'run_attempt': run['run_attempt'],
+            'head_sha': pr['head']['sha'], 'base_sha': pr['base']['sha']}
 
 
 def set_check(api, repository, pr, name, *, success, details, read_api=None):
@@ -168,24 +209,27 @@ def dispatch_ci(api, repository, pr):
     return {"state": "ci_dispatched", "pr_number": pr["number"]}
 
 
+SINGLE_WORKFLOW_FILE = "wmie-review-single.yml"
+
+
 def dispatch_review(api, repository, pr):
+    """Start the single-call review. A run of either review workflow for the same base and head blocks a second start."""
     ci = ci_evidence(api, repository, pr)
-    title = f"WMIE Review pr={pr['number']} "
-    active = next((run for run in recent_runs(api, repository, "wmie-review.lock.yml", **source_filter(pr))
-                   if canonical_run_title(run.get("display_title", "")).startswith(title) and run.get("status") != "completed"), None)
-    if active:
-        return {"state": "review_already_active", "run_id": active["id"]}
-    completed = next((run for run in recent_runs(api, repository, "wmie-review.lock.yml", **source_filter(pr))
-                      if canonical_run_title(run.get("display_title", "")) == f"{title}base={pr['base']['sha']} head={pr['head']['sha']}"), None)
-    if completed:
-        return {"state": "review_already_attempted", "run_id": completed["id"]}
-    previous = previous_analysis(api, repository, pr, 0)
-    if previous:
-        return {"state": "analysis_already_admitted", "run_id": previous}
+    exact = f"base={pr['base']['sha']} head={pr['head']['sha']}"
+    for workflow, title in (("wmie-review.lock.yml", f"WMIE Review pr={pr['number']} "),
+                            (SINGLE_WORKFLOW_FILE, f"WMIE Single Review pr={pr['number']} ")):
+        runs = list(recent_runs(api, repository, workflow, **source_filter(pr)))
+        active = next((run for run in runs if canonical_run_title(run.get("display_title", "")).startswith(title)
+                       and run.get("status") != "completed"), None)
+        if active:
+            return {"state": "review_already_active", "run_id": active["id"]}
+        completed = next((run for run in runs if canonical_run_title(run.get("display_title", "")) == f"{title}{exact}"), None)
+        if completed:
+            return {"state": "review_already_attempted", "run_id": completed["id"]}
     default_branch = api.request("GET", f"/repos/{repository}")["default_branch"]
-    api.request("POST", f"/repos/{repository}/actions/workflows/wmie-review.lock.yml/dispatches", {
-        "ref": default_branch, "inputs": {"pr_number": str(pr["number"]), "ci_run_id": str(ci["run_id"]), "repeat_review": "false",
-                                          "base_sha": pr["base"]["sha"], "head_sha": pr["head"]["sha"]}})
+    api.request("POST", f"/repos/{repository}/actions/workflows/{SINGLE_WORKFLOW_FILE}/dispatches", {
+        "ref": default_branch, "inputs": {"pr_number": str(pr["number"]), "ci_run_id": str(ci["run_id"]), "dry_run": "false",
+                                          "repeat_review": "false", "base_sha": pr["base"]["sha"], "head_sha": pr["head"]["sha"]}})
     return {"state": "review_dispatched", "pr_number": pr["number"], "ci_run_id": ci["run_id"]}
 
 
