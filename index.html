@@ -3,12 +3,12 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Playground wmie · prototipi di interfaccia</title>
-<meta name="description" content="Tre prototipi di interfaccia costruiti da wmie: una sezione FAQ che risponde anche alle domande non previste, una ricerca che capisce la frase intera, una ricerca semantica dentro una pagina lunga. Sono concept con contenuti fissi.">
+<title>Playground wmie · componenti di interfaccia</title>
+<meta name="description" content="Componenti di interfaccia sviluppati da wmie: FAQ con risposte generate dai contenuti del sito (RAG), ricerca in linguaggio naturale su cataloghi, ricerca semantica dentro una pagina. Ognuno con la sua scheda tecnica.">
 <link rel="canonical" href="https://wmie.github.io/">
 <meta property="og:type" content="website">
-<meta property="og:title" content="Playground wmie · prototipi di interfaccia">
-<meta property="og:description" content="Tre prototipi di interfaccia: FAQ che rispondono a domande non previste, ricerca che capisce la frase intera, ricerca semantica nella pagina.">
+<meta property="og:title" content="Playground wmie · componenti di interfaccia">
+<meta property="og:description" content="Componenti di interfaccia: FAQ con risposte generate dai contenuti (RAG), ricerca in linguaggio naturale, ricerca semantica nella pagina.">
 <meta property="og:url" content="https://wmie.github.io/">
 <meta property="og:image" content="https://wmie.github.io/media/faq-infinite.jpg">
 <meta name="twitter:card" content="summary_large_image">
@@ -26,23 +26,17 @@
 
 <main>
   <section class="hero"><div class="wrap">
-    <p class="eyebrow">Prototipi</p>
-    <h1>Tre pezzi di interfaccia, isolati e giocabili</h1>
-    <p class="lead">Quando una funzione ci sembra buona la costruiamo qui prima di proporla dentro il sito di qualcuno: una pagina sola, dati di prova, nessun backend. Serve a vedere se il comportamento regge fuori dalla nostra testa.</p>
-    <p>Siamo <a href="https://wmie.it">wmie</a>, uno studio di Cagliari che progetta e costruisce siti, e-commerce e web app. Queste tre pagine sono il materiale di scarto buono del lavoro vero.</p>
-
-    <div class="note">
-      <p class="note__t">Da leggere prima di entrare</p>
-      <p>Sono concept. Testi, dati e risposte stanno scritti dentro la pagina: nessuna delle tre interroga un modello o un server mentre la guardate. Due si recitano da sole, partono da sole e si fermano; la ricerca conversazionale risponde davvero a quello che scrivete, sul suo catalogo di prova.</p>
-      <p>Ogni pagina qui sotto spiega dove finisce la finzione e cosa servirebbe per portare quella funzione su un sito in produzione.</p>
-    </div>
+    <p class="eyebrow">Componenti</p>
+    <h1>Quattro pezzi di interfaccia, visti mentre funzionano</h1>
+    <p class="lead">Quando una funzione ci sembra buona la costruiamo qui, isolata, prima di portarla dentro il sito di un cliente. Serve a vedere se il comportamento regge fuori dalla nostra testa.</p>
+    <p>Siamo <a href="https://wmie.it">wmie</a>, uno studio di Cagliari che progetta e costruisce siti, e-commerce e web app. Ogni pagina mostra un componente in funzione e la sua scheda tecnica: come si chiama, su quale pattern si regge, come lo mettiamo in produzione.</p>
   </div></section>
 
   <section><div class="wrap"><div class="grid">
     <a class="card" href="./faq-infinite/">
       <img src="./media/faq-infinite.jpg" alt="Una sezione FAQ con un campo in fondo dove scrivere una domanda" width="1200" height="675" loading="lazy">
       <div class="card__in">
-        <span class="card__k">FAQ infinite</span>
+        <span class="card__k">FAQ infinite · RAG</span>
         <h2>L'ultima riga risponde a qualsiasi domanda</h2>
         <p>Un accordion di FAQ con una riga in più: il visitatore scrive la domanda con parole sue e la sezione risponde leggendo le pagine del sito, con il link a quella da cui prende la risposta.</p>
       </div>
@@ -50,15 +44,23 @@
     <a class="card" href="./ricerca-conversazionale/">
       <img src="./media/ricerca-conversazionale.jpg" alt="Una griglia di annunci auto che si riordina mentre si scrive una frase nella barra di ricerca" width="1200" height="675" loading="lazy">
       <div class="card__in">
-        <span class="card__k">Ricerca conversazionale</span>
+        <span class="card__k">Natural-language search · auto</span>
         <h2>Una frase intera al posto di sei filtri</h2>
-        <p>«un'auto dal 2022 elettrica con autonomia oltre i 500 km» e la griglia si stringe a ogni pezzo della frase, lettera per lettera. Questa la potete usare: scriveteci quello che volete.</p>
+        <p>«un'auto dal 2022 elettrica con autonomia oltre i 500 km» e la griglia si stringe a ogni pezzo della frase, lettera per lettera.</p>
+      </div>
+    </a>
+    <a class="card" href="./ricerca-film/">
+      <img src="./media/ricerca-film.jpg" alt="Locandine di film che salgono da un mucchio sotto una barra di ricerca" width="1200" height="675" loading="lazy">
+      <div class="card__in">
+        <span class="card__k">Natural-language search · film</span>
+        <h2>Il catalogo che risponde a una frase</h2>
+        <p>«animazione con voto imdb sopra 8.3 usciti dopo il 2000»: a ogni pezzo della frase le locandine giuste si staccano dal mucchio e salgono in fila, con la fisica vera.</p>
       </div>
     </a>
     <a class="card" href="./ricerca-semantica/">
       <img src="./media/ricerca-semantica.jpg" alt="Una pagina di condizioni di vendita con le frasi che rispondono alla domanda evidenziate in viola" width="1200" height="675" loading="lazy">
       <div class="card__in">
-        <span class="card__k">Ricerca semantica</span>
+        <span class="card__k">Semantic in-page search</span>
         <h2>Il ⌘F che capisce la domanda</h2>
         <p>Una pagina legale lunghissima e una domanda in italiano. Si accendono le frasi che rispondono, anche quando non contengono nessuna delle parole della domanda.</p>
       </div>
@@ -67,8 +69,8 @@
 
   <section><div class="wrap wrap--text piece">
     <h2>Perché li teniamo pubblici</h2>
-    <p>Un prototipo che resta in una cartella serve a una persona sola. Pubblicato, diventa una cosa che possiamo mandare a un cliente a metà di una call, e che chiunque può aprire per capire in venti secondi di cosa stiamo parlando. Costa meno di una slide e mente molto meno.</p>
-    <p>Le versioni finite di queste idee finiscono nel <a href="https://wmie.it/design">Playground di wmie.it</a>, insieme al resto delle esplorazioni di design che facciamo per i progetti.</p>
+    <p>Un componente che resta in una cartella serve a una persona sola. Pubblicato, diventa una cosa che possiamo mandare a un cliente a metà di una call, e che chiunque può aprire per capire in venti secondi di cosa stiamo parlando. Spiega più di una slide, in meno tempo.</p>
+    <p>Le versioni raccontate di questi lavori stanno nel <a href="https://wmie.it/design">Playground di wmie.it</a>, insieme al resto delle esplorazioni di design che facciamo per i progetti. L'elenco completo, che si aggiorna da solo, sta nella pagina <a href="./playground/">Esplorazioni di design</a>.</p>
 
     <div class="cta">
       <h2>Una di queste avrebbe senso sul vostro sito?</h2>
@@ -86,7 +88,9 @@
   <nav>
     <a href="./faq-infinite/">FAQ infinite</a>
     <a href="./ricerca-conversazionale/">Ricerca conversazionale</a>
+    <a href="./ricerca-film/">Ricerca sui film</a>
     <a href="./ricerca-semantica/">Ricerca semantica</a>
+    <a href="./playground/">Esplorazioni</a>
     <a href="https://github.com/wmie">GitHub</a>
   </nav>
 </div></footer>
