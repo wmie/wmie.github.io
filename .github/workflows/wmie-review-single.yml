@@ -1,0 +1,176 @@
+# Local implementation candidate. No automatic trigger; publication requires a
+# separately authorized trusted compatibility policy and explicit activation.
+name: Single-call review candidate
+run-name: WMIE Single Review pr=${{ inputs.pr_number }} base=${{ inputs.base_sha }} head=${{ inputs.head_sha }}
+on:
+  workflow_dispatch:
+    inputs:
+      pr_number:
+        description: Pull request number
+        required: true
+        type: string
+      base_sha:
+        description: Exact current base commit
+        required: true
+        type: string
+      head_sha:
+        description: Exact current head commit
+        required: true
+        type: string
+      ci_run_id:
+        description: Successful required CI execution
+        required: true
+        type: string
+      dry_run:
+        description: Validate without publishing a GitHub review
+        type: boolean
+        default: true
+      repeat_review:
+        description: Explicitly authorize another inference for this commit
+        type: boolean
+        default: false
+permissions: {}
+concurrency:
+  group: wmie-single-review-${{ github.repository }}-${{ inputs.pr_number }}
+  cancel-in-progress: false
+env:
+  WMIE_WORKFLOW_SHA: ${{ github.workflow_sha }}
+jobs:
+  prepare:
+    name: Single-call review input
+    if: github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubicloud-standard-2
+    environment: wmie-review
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+    outputs:
+      ready: ${{ steps.prepare.outputs.ready }}
+      artifact_id: ${{ steps.input.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: wmie-control
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install trusted parsers
+        run: |
+          python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt -r wmie-control/.github/wmie/requirements-single-call.txt
+      - name: Pin source and verify required CI
+        id: prepare
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 wmie-control/.github/wmie/single_pipeline.py prepare
+      - name: Preserve bound review input
+        if: steps.prepare.outputs.ready == 'true'
+        id: input
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: wmie-single-input-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wmie-input
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 30
+  review:
+    name: Single-call review analysis
+    needs: prepare
+    if: needs.prepare.outputs.ready == 'true' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubicloud-standard-2
+    environment: wmie-review
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+    outputs:
+      artifact_id: ${{ steps.result.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: wmie-control
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install trusted parsers
+        run: |
+          python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt -r wmie-control/.github/wmie/requirements-single-call.txt
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          artifact-ids: ${{ needs.prepare.outputs.artifact_id }}
+          path: wmie-input
+      - name: Review once and validate structured evidence
+        env:
+          GH_TOKEN: ${{ github.token }}
+          WMIE_SINGLE_CALL_KEY: ${{ secrets.WMIE_AGENT_OPENROUTER_API_KEY }}
+        run: python3 wmie-control/.github/wmie/single_pipeline.py review
+      - name: Preserve execution evidence
+        if: always()
+        id: result
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: wmie-single-result-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wmie-single-result
+          if-no-files-found: warn
+          retention-days: 30
+  publish:
+    name: Publish single-call review
+    needs: [prepare, review]
+    if: inputs.dry_run == false && github.ref == format('refs/heads/{0}', github.event.repository.default_branch) && endsWith(github.workflow_ref, format('@refs/heads/{0}', github.event.repository.default_branch))
+    runs-on: ubicloud-standard-2
+    environment: wmie-review
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          ref: ${{ github.workflow_sha }}
+          path: wmie-control
+          persist-credentials: false
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
+      - name: Install trusted validators
+        run: |
+          python3 -m pip install --only-binary=:all: --disable-pip-version-check -r wmie-control/.github/wmie/requirements.txt -r wmie-control/.github/wmie/requirements-single-call.txt
+      - uses: actions/download-artifact@37930b1c2abaa49bbe596cd826c3c89aef350131
+        with:
+          artifact-ids: ${{ needs.review.outputs.artifact_id }}
+          path: wmie-single-result
+      - name: Validate before creating write credentials
+        run: python3 wmie-control/.github/wmie/single_pipeline.py publish --dry-run
+      - name: Create review-only App credential
+        id: reviewer
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510
+        with:
+          client-id: ${{ secrets.WMIE_REVIEW_CLIENT_ID }}
+          private-key: ${{ secrets.WMIE_REVIEW_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+      - name: Recheck current CI and publish one grouped review
+        env:
+          GH_TOKEN: ${{ steps.reviewer.outputs.token }}
+        run: python3 wmie-control/.github/wmie/single_pipeline.py publish
+      - name: Preserve verified publication receipt
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f
+        with:
+          name: wmie-single-publication-${{ github.run_id }}-${{ github.run_attempt }}
+          path: wmie-single-result/publication.json
+          if-no-files-found: error
+          retention-days: 30

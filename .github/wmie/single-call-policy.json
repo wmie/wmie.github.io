@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "enabled": true,
+  "protocol": "wmie-single-call-v1",
+  "workflow_path": ".github/workflows/wmie-review-single.yml",
+  "reviewer_bot_id": 285751170,
+  "governance_reader": "wmie-single-call-v1"
+}
