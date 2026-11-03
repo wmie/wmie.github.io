@@ -16,6 +16,11 @@ VEX_ARGUMENT = '--vex .github/wmie/triage.openvex.json'
 VEX_SHA256 = 'd8f6ecca253838b4c60b6b0d74938f625a53a0093ed489a06c3709422a6be4e9'
 VEX_GUARD = 'echo "' + VEX_SHA256 + '  .github/wmie/triage.openvex.json" | sha256sum --check -'
 CONTACT_RECIPIENT = 'synthetic@example.invalid'
+MAINTENANCE_DETECTOR_SHA256 = '6e46ab8e335310bbfbb5b332f9f3c1645e7375aae1c4db9412afff3b46589585'
+REVIEW_TEST_COMMAND = '    - run: node --test scripts/release/*.test.mjs\n'
+REVIEW_DEPENDENCY_SETUP = ("    - uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e\n"
+                         "      with:\n        node-version: '22'\n        cache: npm\n"
+                         "        cache-dependency-path: package-lock.json\n    - run: npm ci\n")
 
 
 def manifest():
@@ -33,7 +38,23 @@ def workflow(data):
         return yaml_data(path)
 
 
-def migrate(data, *, vex=False, contact_recipient=False):
+def maintenance_agent_exclusion(pr, data, job_name):
+    if pr.get('user', {}).get('type') != 'Bot' or pr['user'].get('login') not in {
+            'wmie-sync[bot]', 'dependabot[bot]'}:
+        return False
+    jobs = workflow(data).get('jobs', {})
+    detector = jobs.get('detect-agent', {})
+    steps = detector.get('steps', [])
+    if (len(steps) != 1 or detector.get('outputs', {}).get('is_agent') != '${{ steps.check.outputs.is_agent }}'
+            or hashlib.sha256(json.dumps(steps[0], sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+            != MAINTENANCE_DETECTOR_SHA256):
+        return False
+    targets = [job for key, job in jobs.items() if job.get('name', key) == job_name]
+    return (len(targets) == 1 and targets[0].get('needs') in ('detect-agent', ['detect-agent'])
+            and targets[0].get('if', '').strip() == "needs.detect-agent.outputs.is_agent == 'true'")
+
+
+def migrate(data, *, vex=False, contact_recipient=False, review_dependencies=False):
     before = workflow(data)
     expected = copy.deepcopy(before)
     count = 0
@@ -56,6 +77,24 @@ def migrate(data, *, vex=False, contact_recipient=False):
                     step['run'] = command.replace(original, replacement)
     value, replaced = re.subn(rb'(?m)^(    runs-on: )(ubuntu-latest|ubuntu-24\.04)([ \t]*(?:#[^\n]*)?)$',
                               lambda m: m[1] + RUNNER.encode() + m[3], data)
+    if review_dependencies:
+        job = expected.get('jobs', {}).get('review', {})
+        steps = job.get('steps', [])
+        setup = [{'uses': 'actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e',
+                  'with': {'node-version': '22', 'cache': 'npm', 'cache-dependency-path': 'package-lock.json'}},
+                 {'run': 'npm ci'}]
+        require(job.get('name') == 'Review tooling tests'
+                and steps and steps[-1] == {'run': 'node --test scripts/release/*.test.mjs'},
+                'migration_review_test_setup_invalid')
+        if len(steps) == 2:
+            require(steps[0] == {'uses': 'actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd',
+                                'with': {'persist-credentials': False}}, 'migration_review_test_setup_invalid')
+            steps[1:1] = setup
+            require(value.count(REVIEW_TEST_COMMAND.encode()) == 1, 'migration_review_test_setup_invalid')
+            value = value.replace(REVIEW_TEST_COMMAND.encode(),
+                                  (REVIEW_DEPENDENCY_SETUP + REVIEW_TEST_COMMAND).encode())
+        else:
+            require(len(steps) == 4 and steps[1:3] == setup, 'migration_review_test_setup_invalid')
     if contact_recipient:
         environment = expected.get('jobs', {}).get('test', {}).get('env', {})
         require(environment.get('PGDATABASE') == 'payload_test'
@@ -74,10 +113,15 @@ def migrate(data, *, vex=False, contact_recipient=False):
 
 
 def authorized_change(repository, path, original, proposed):
+    repair = project_repair_records(repository).get(path)
+    if repair:
+        return (blob(original) == repair['before_blob']
+                and apply_project_repair(original, repair) == proposed)
     record = manifest()['repositories'].get(repository, {}).get('custom', {}).get(path)
     return bool(record and blob(original) == record['before_blob']
                 and migrate(original, vex=record.get('vex', False),
-                            contact_recipient=record.get('contact_recipient', False)) == proposed)
+                            contact_recipient=record.get('contact_recipient', False),
+                            review_dependencies=record.get('review_dependencies', False)) == proposed)
 
 
 def approved_baseline(repository, previous_commit, files):
@@ -146,13 +190,65 @@ def test_repair_records(repository, inventory=None):
     return records
 
 
-def custom_changes(api, repository, commit):
+def project_repair_records(repository, inventory=None):
+    inventory = inventory if inventory is not None else manifest()
+    repository_record = inventory['repositories'].get(repository, {})
+    records = repository_record.get('project_repairs', {})
+    require(isinstance(records, dict), 'migration_project_repairs_invalid')
+    for path, record in records.items():
+        safe_path(path)
+        workflow_repair = (path.startswith('.github/workflows/') and path.endswith(('.yml', '.yaml'))
+                           and not Path(path).name.startswith('wmie-')
+                           and path in repository_record.get('custom', {}))
+        require(not path.startswith('.') or workflow_repair,
+                'migration_project_path_forbidden', path)
+        require(Path(path).name not in {'AGENTS.md', 'CLAUDE.md', 'GEMINI.md'},
+                'migration_project_path_forbidden', path)
+        require(isinstance(record, dict), 'migration_project_repair_invalid')
+        require('before_blob' in record, 'migration_project_before_blob_missing', path)
+        sha(record.get('after_blob'))
+        if record.get('before_blob') is None:
+            require(isinstance(record.get('content'), str) and record['content']
+                    and blob(record['content'].encode()) == record['after_blob']
+                    and not path.startswith('.github/'), 'migration_project_new_file_invalid', path)
+        else:
+            sha(record['before_blob'])
+            require(record['before_blob'] != record['after_blob']
+                    and isinstance(record.get('edits'), list) and record['edits'],
+                    'migration_project_edits_invalid', path)
+            for edit in record['edits']:
+                require(isinstance(edit, dict) and isinstance(edit.get('before'), str)
+                        and edit['before'] and isinstance(edit.get('after'), str),
+                        'migration_project_edit_invalid', path)
+    return records
+
+
+def apply_project_repair(original, record):
+    require((blob(original) if original is not None else None) == record['before_blob'],
+            'migration_project_file_changed')
+    if original is None:
+        proposed = record['content'].encode()
+    else:
+        proposed = original
+        for edit in record['edits']:
+            before, after = edit['before'].encode(), edit['after'].encode()
+            require(proposed.count(before) == 1, 'migration_project_edit_ambiguous')
+            proposed = proposed.replace(before, after)
+    require(blob(proposed) == record['after_blob'], 'migration_project_repair_mismatch')
+    return proposed
+
+
+def custom_changes(api, repository, commit, entries=None):
     result = {}
+    project_repairs = project_repair_records(repository)
     for path, record in manifest()['repositories'].get(repository, {}).get('custom', {}).items():
+        if path in project_repairs:
+            continue
         original = api.file(repository, path, commit)
         if blob(original) == record['before_blob']:
             proposed = migrate(original, vex=record.get('vex', False),
-                               contact_recipient=record.get('contact_recipient', False))
+                               contact_recipient=record.get('contact_recipient', False),
+                               review_dependencies=record.get('review_dependencies', False))
             if proposed != original:
                 result[path] = proposed.decode()
         else:
@@ -173,6 +269,26 @@ def custom_changes(api, repository, commit):
             proposed = proposed.replace(before, after)
         require(blob(proposed) == record['after_blob'], 'migration_test_repair_mismatch', path)
         result[path] = proposed.decode()
+    if project_repairs:
+        if entries is None:
+            tree = api.request('GET', f'/repos/{repository}/git/trees/{commit}?recursive=1')
+            require(tree.get('truncated') is False, 'migration_project_tree_incomplete')
+            entries = {row['path']: row for row in tree['tree']}
+        for path, record in project_repairs.items():
+            entry = entries.get(path)
+            require(entry is None or (entry.get('type') == 'blob' and entry.get('mode') == '100644'),
+                    'migration_project_file_mode', path)
+            original = api.file(repository, path, commit) if entry else None
+            if original is not None and blob(original) == record['after_blob']:
+                if path.startswith('.github/workflows/'):
+                    validate_runners(workflow(original), path)
+                continue
+            proposed = apply_project_repair(original, record)
+            if path.startswith('.github/workflows/'):
+                validate_runners(workflow(proposed), path)
+                require(set(workflow(original)['jobs']) <= set(workflow(proposed)['jobs']),
+                        'migration_project_job_removed', path)
+            result[path] = proposed.decode()
     return result
 
 

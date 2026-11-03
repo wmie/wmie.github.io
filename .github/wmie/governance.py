@@ -40,10 +40,23 @@ def published_approval(api, repository, pr, ci, *, merged_source_commit=None):
         require(review.get("state") != "COMMENTED", "analysis_incomplete", f"Read code review {review['id']}.")
     require(record.get("verdict") != "changes_requested", "application_findings", f"Read WMIE review {review['id']}.")
     require(record.get("verdict") != "incomplete", "analysis_incomplete", f"Read WMIE review {review['id']}.")
-    run = trusted_run(api, repository, number(record.get("review_run_id")), REVIEW_WORKFLOW,
-                      events={"workflow_run", "workflow_dispatch"})
+    try:
+        run = trusted_run(api, repository, number(record.get("review_run_id")), REVIEW_WORKFLOW,
+                          events={"workflow_run", "workflow_dispatch"})
+    except GovernanceError as error:
+        # Only an actual producer-path mismatch may select the other explicit
+        # protocol. Trust failures never cause a fallback or weaker evidence.
+        if error.code != 'run_workflow_mismatch':
+            raise
+        from evidence import SINGLE_REVIEW_WORKFLOW
+        run = trusted_run(api, repository, number(record.get('review_run_id')), SINGLE_REVIEW_WORKFLOW,
+                          events={'workflow_dispatch'})
     require(run.get("status") == "completed" and run.get("conclusion") == "success", "review_execution_incomplete")
     require(run["run_attempt"] == record.get("review_run_attempt"), "review_attempt_superseded")
+    from evidence import SINGLE_REVIEW_WORKFLOW
+    if run.get('path', '').split('@', 1)[0] == SINGLE_REVIEW_WORKFLOW:
+        return single_published_approval(api, repository, pr, ci, run, review,
+                                         merged_source_commit=merged_source_commit)
     binding = validate_input_record(binding_for_run(api, repository, run), run, pr)
     require(binding.get("ci", {}).get("profile_sha256") == ci["profile_sha256"]
             and binding["ci"].get("plan_sha256") == ci["plan_sha256"], "published_ci_plan_mismatch")
@@ -58,6 +71,34 @@ def published_approval(api, repository, pr, ci, *, merged_source_commit=None):
     return {"review_id": review["id"], "run_id": run["id"], "run_attempt": run["run_attempt"],
             "head_sha": pr["head"]["sha"], "base_sha": pr["base"]["sha"],
             **({"reviewed_base_sha": binding["manifest"]["merge_base_sha"]} if merged_source_commit else {})}
+
+
+def single_published_approval(api, repository, pr, ci, run, review, *, merged_source_commit=None):
+    """Compatibility reader for an explicitly enabled, immutable new producer."""
+    from evidence import artifact_record, SINGLE_REVIEW_WORKFLOW, single_review_evidence
+    from single_pipeline import publication_policy
+    require(merged_source_commit is None, 'single_merged_release_history_unavailable')
+    require(pr.get('state') == 'open' and not pr.get('draft'), 'pr_not_ready')
+    default = pr.get('base', {}).get('repo', {}).get('default_branch')
+    require(isinstance(default, str) and default and run.get('head_branch') == default,
+            'single_default_branch_required')
+    binding = artifact_record(api, repository, run,
+                              f"wmie-single-input-{run['id']}-{run['run_attempt']}", 'binding.json')
+    validate_input_record(binding, run, pr, workflow=SINGLE_REVIEW_WORKFLOW)
+    publication_policy(api, binding)
+    require(binding.get('ci', {}).get('profile_sha256') == ci['profile_sha256']
+            and binding['ci'].get('plan_sha256') == ci['plan_sha256'], 'published_ci_plan_mismatch')
+    jobs = run_jobs(api, repository, run)
+    require(all(jobs.get(name, {}).get('conclusion') == 'success' for name in (
+        'Single-call review input', 'Single-call review analysis', 'Publish single-call review')), 'review_jobs_incomplete')
+    original_record = single_review_evidence(api, repository, run, binding, review)
+    require(original_record.get('complete') is True and original_record.get('verdict') == 'approve', 'review_not_approval')
+    require(review.get('state') == 'APPROVED', 'approval_not_published')
+    reference = review_reference(review.get('body'), repository)
+    require(reference and all(reference[field] == original_record[field] for field in reference),
+            'published_record_mismatch')
+    return {'review_id': review['id'], 'run_id': run['id'], 'run_attempt': run['run_attempt'],
+            'head_sha': pr['head']['sha'], 'base_sha': pr['base']['sha']}
 
 
 def set_check(api, repository, pr, name, *, success, details, read_api=None):
